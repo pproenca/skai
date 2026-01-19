@@ -9,6 +9,7 @@ import {
   getQualifiedName,
   parseSkillMd,
   discoverSkills,
+  extractShortSummary,
 } from './skills.js';
 import type { Skill, TreeNode } from './types.js';
 
@@ -432,5 +433,59 @@ name: Root Skill
     const skills = discoverSkills('/base');
 
     expect(skills.some(s => s.name === 'Root Skill')).toBe(true);
+  });
+});
+
+describe('extractShortSummary', () => {
+  it('returns empty string for empty input', () => {
+    expect(extractShortSummary('')).toBe('');
+  });
+
+  it('returns full description if short enough', () => {
+    expect(extractShortSummary('A short description')).toBe('A short description');
+  });
+
+  it('removes "This skill should be used" trigger phrase', () => {
+    const desc = 'React best practices. This skill should be used when writing React components.';
+    expect(extractShortSummary(desc)).toBe('React best practices');
+  });
+
+  it('removes "Triggers on tasks" trigger phrase', () => {
+    const desc = 'TypeScript patterns. Triggers on tasks involving type definitions.';
+    expect(extractShortSummary(desc)).toBe('TypeScript patterns');
+  });
+
+  it('removes "Use this skill when" trigger phrase', () => {
+    const desc = 'Python debugging tips. Use this skill when debugging Python code.';
+    expect(extractShortSummary(desc)).toBe('Python debugging tips');
+  });
+
+  it('removes "Apply when" trigger phrase', () => {
+    const desc = 'CSS grid layout. Apply when creating responsive layouts.';
+    expect(extractShortSummary(desc)).toBe('CSS grid layout');
+  });
+
+  it('removes trailing punctuation', () => {
+    const desc = 'A description with trailing punctuation.';
+    expect(extractShortSummary(desc)).toBe('A description with trailing punctuation');
+  });
+
+  it('truncates long descriptions with ellipsis', () => {
+    const desc = 'This is a very long description that exceeds the maximum length limit for display';
+    const result = extractShortSummary(desc, 30);
+    expect(result.length).toBeLessThanOrEqual(30);
+    expect(result.endsWith('…')).toBe(true);
+  });
+
+  it('uses custom maxLength parameter', () => {
+    const desc = 'Medium length description here';
+    const result = extractShortSummary(desc, 15);
+    expect(result).toBe('Medium length…');
+  });
+
+  it('handles descriptions that start with trigger phrase (index 0)', () => {
+    const desc = 'This skill should be used for testing.';
+    // When trigger is at index 0, it should not split
+    expect(extractShortSummary(desc, 50)).toBe('This skill should be used for testing');
   });
 });

@@ -241,7 +241,7 @@ export function skillTreeToTreeNodes(node: SkillTreeNode, parentPath = ""): Tree
     result.push({
       id,
       label: s.name,
-      hint: s.skill!.description,
+      hint: extractShortSummary(s.skill!.description),
       skill: s.skill,
       selected: false,
     });
@@ -285,4 +285,39 @@ export function matchesSkillFilter(skill: Skill, filter: string): boolean {
 
   // Check just skill name
   return skill.name.toLowerCase() === filterLower;
+}
+
+/**
+ * Extract human-readable summary from skill description.
+ * Removes AI trigger phrases like "This skill should be used when..."
+ */
+export function extractShortSummary(description: string, maxLength = 50): string {
+  if (!description) return "";
+
+  // Split on common trigger phrases
+  const triggers = [
+    "This skill should be used",
+    "Triggers on tasks",
+    "Use this skill when",
+    "Apply when",
+  ];
+
+  let summary = description;
+  for (const trigger of triggers) {
+    const index = summary.indexOf(trigger);
+    if (index > 0) {
+      summary = summary.slice(0, index).trim();
+      break;
+    }
+  }
+
+  // Remove trailing punctuation
+  summary = summary.replace(/[.,;:]+$/, "").trim();
+
+  // Truncate if still too long
+  if (summary.length > maxLength) {
+    summary = summary.slice(0, maxLength - 1).trim() + "…";
+  }
+
+  return summary;
 }

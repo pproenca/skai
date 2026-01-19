@@ -83,38 +83,7 @@ const S_CHECKBOX_ACTIVE = color.cyan("◻");
 const S_CHECKBOX_SELECTED = color.green("◼");
 const S_CHECKBOX_INACTIVE = color.dim("◻");
 
-const MAX_HINT_LENGTH = 60;
-
-function truncateHint(hint: string | undefined, maxLen: number): string {
-  if (!hint) return "";
-  if (hint.length <= maxLen) return hint;
-  return hint.slice(0, maxLen - 1) + "…";
-}
-
-function wrapText(text: string, maxWidth: number): string[] {
-  if (!text) return [];
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    if (currentLine.length === 0) {
-      currentLine = word;
-    } else if (currentLine.length + 1 + word.length <= maxWidth) {
-      currentLine += " " + word;
-    } else {
-      lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  return lines;
-}
-
-const DESCRIPTION_INDENT = "       ";
-const DESCRIPTION_MAX_WIDTH = 60;
+const MAX_LABEL_WIDTH = 30;
 
 interface SearchableOption<T> {
   option: SkillOption;
@@ -361,31 +330,19 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
           checkbox = S_CHECKBOX_INACTIVE;
         }
 
-        const label = this.searchTerm
-          ? highlightMatch(opt.option.label, this.searchTerm)
-          : opt.option.label;
+        const hint = opt.option.hint || "";
 
-        const fullHint = opt.option.hint || "";
-        const needsTruncation = fullHint.length > MAX_HINT_LENGTH;
-        const displayHint = needsTruncation
-          ? truncateHint(fullHint, MAX_HINT_LENGTH)
-          : fullHint;
-        const hint = displayHint ? color.dim(` (${displayHint})`) : "";
+        // Pad label to align summaries in a clean column
+        const paddedLabel = opt.option.label.padEnd(MAX_LABEL_WIDTH);
+        const highlightedPaddedLabel = this.searchTerm
+          ? highlightMatch(paddedLabel, this.searchTerm)
+          : paddedLabel;
 
         const line = isActive
-          ? `${checkbox} ${label}${hint}`
-          : `${checkbox} ${color.dim(opt.option.label)}${color.dim(hint)}`;
+          ? `${checkbox} ${highlightedPaddedLabel} ${color.dim(hint)}`
+          : `${checkbox} ${color.dim(paddedLabel)} ${color.dim(hint)}`;
 
         lines.push(`${color.cyan(S_BAR)}  ${line}`);
-
-        if (isActive && needsTruncation) {
-          const wrappedLines = wrapText(fullHint, DESCRIPTION_MAX_WIDTH);
-          for (const descLine of wrappedLines) {
-            lines.push(
-              `${color.cyan(S_BAR)}  ${DESCRIPTION_INDENT}${color.dim(descLine)}`
-            );
-          }
-        }
       }
 
       if (belowCount > 0) {
@@ -722,15 +679,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             checkbox = S_CHECKBOX_INACTIVE;
           }
 
-          const label = this.searchTerm
-            ? highlightMatch(item.option.option.label, this.searchTerm)
-            : item.option.option.label;
-          const fullHint = item.option.option.hint || "";
-          const needsTruncation = fullHint.length > MAX_HINT_LENGTH;
-          const displayHint = needsTruncation
-            ? truncateHint(fullHint, MAX_HINT_LENGTH)
-            : fullHint;
-          const hint = displayHint ? color.dim(` (${displayHint})`) : "";
+          const hint = item.option.option.hint || "";
 
           const isLastInGroup =
             i + 1 >= visibleItems.length ||
@@ -739,21 +688,17 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             ? `${color.gray("└")} `
             : `${color.gray("│")} `;
 
+          // Pad label to align summaries in a clean column
+          const paddedLabel = item.option.option.label.padEnd(MAX_LABEL_WIDTH);
+          const highlightedPaddedLabel = this.searchTerm
+            ? highlightMatch(paddedLabel, this.searchTerm)
+            : paddedLabel;
+
           const line = isActive
-            ? `${indent}${checkbox} ${label}${hint}`
-            : `${indent}${checkbox} ${color.dim(item.option.option.label)}${color.dim(hint)}`;
+            ? `${indent}${checkbox} ${highlightedPaddedLabel} ${color.dim(hint)}`
+            : `${indent}${checkbox} ${color.dim(paddedLabel)} ${color.dim(hint)}`;
 
           lines.push(`${color.cyan(S_BAR)}  ${line}`);
-
-          if (isActive && needsTruncation) {
-            const descIndent = isLastInGroup ? "  " : `${color.gray("│")} `;
-            const wrappedLines = wrapText(fullHint, DESCRIPTION_MAX_WIDTH);
-            for (const descLine of wrappedLines) {
-              lines.push(
-                `${color.cyan(S_BAR)}  ${descIndent}${DESCRIPTION_INDENT}${color.dim(descLine)}`
-              );
-            }
-          }
         }
       }
 
