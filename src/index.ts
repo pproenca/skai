@@ -30,6 +30,24 @@ function showManualInstallHint(deps: Record<string, string>, pm: PackageManager)
   clack.note(command, "Install manually");
 }
 
+function displaySingleSkill(skill: Skill): void {
+  const parts: string[] = [];
+
+  // Add category path if present (dimmed)
+  if (skill.category && skill.category.length > 0) {
+    parts.push(chalk.dim(skill.category.join("/")));
+  }
+
+  // Add description or hint
+  if (skill.description && skill.description.trim()) {
+    parts.push(skill.description);
+  } else {
+    parts.push(chalk.dim("(No description provided)"));
+  }
+
+  clack.note(parts.join("\n"), skill.name);
+}
+
 function getVersion(): string {
   try {
     const pkgPath = path.join(__dirname, "..", "package.json");
@@ -154,6 +172,11 @@ async function run(source: string | undefined, options: CLIOptions) {
         clack.outro(chalk.red("No matching skills"));
         return;
       }
+    }
+
+    // Display single skill info (when not in list or JSON mode)
+    if (filteredSkills.length === 1 && !options.list && !options.json) {
+      displaySingleSkill(filteredSkills[0]);
     }
 
     // List mode
