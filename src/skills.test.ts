@@ -12,10 +12,8 @@ import {
 } from './skills.js';
 import type { Skill, TreeNode } from './types.js';
 
-// Mock fs module
 vi.mock('node:fs');
 
-// Helper to create a skill for testing
 function createSkill(name: string, category?: string[], description = ''): Skill {
   return {
     name,
@@ -194,7 +192,6 @@ describe('getQualifiedName', () => {
   });
 });
 
-// Tests for parseSkillMd
 describe('parseSkillMd', () => {
   const mockedFs = vi.mocked(fs);
 
@@ -273,7 +270,6 @@ name: Curated Skill
 # Content
 `);
 
-    // .curated is a transparent directory
     const result = parseSkillMd('/base/.curated/coding/skill/SKILL.md', '/base');
 
     expect(result?.category).toEqual(['coding']);
@@ -313,7 +309,6 @@ name: Test
   });
 });
 
-// Tests for discoverSkills
 describe('discoverSkills', () => {
   const mockedFs = vi.mocked(fs);
 
@@ -326,14 +321,12 @@ describe('discoverSkills', () => {
   });
 
   it('searches priority directories first', () => {
-    // Mock no skills found anywhere
     mockedFs.existsSync.mockReturnValue(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (mockedFs.readdirSync as any).mockReturnValue([]);
 
     discoverSkills('/base');
 
-    // Should check for priority directories like 'skills', '.claude/skills', etc.
     const existsCalls = mockedFs.existsSync.mock.calls.map(c => String(c[0]));
     expect(existsCalls.some(c => c.includes('skills'))).toBe(true);
   });
@@ -345,7 +338,6 @@ describe('discoverSkills', () => {
 
     discoverSkills('/base', 'custom/path');
 
-    // Should check for /base/custom/path
     const existsCalls = mockedFs.existsSync.mock.calls.map(c => String(c[0]));
     expect(existsCalls.some(c => c.includes('custom/path') || c.includes('custom\\path'))).toBe(true);
   });
@@ -376,7 +368,7 @@ name: Valid Skill
 
     const skills = discoverSkills('/base');
 
-    // node_modules and .git should be skipped
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const readdirCalls = (mockedFs.readdirSync as any).mock.calls.map((c: any[]) => String(c[0]));
     expect(readdirCalls).not.toContain('/base/node_modules');
     expect(readdirCalls).not.toContain('/base/.git');
@@ -388,7 +380,6 @@ name: Valid Skill
     let callCount = 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (mockedFs.readdirSync as any).mockImplementation((dir: string) => {
-      // Return SKILL.md for skills directory on first few calls
       if (dir.endsWith('/skills') && callCount < 3) {
         callCount++;
         return [
@@ -410,7 +401,6 @@ name: My Skill
 
     const skills = discoverSkills('/base');
 
-    // Should not have duplicates
     const paths = skills.map(s => s.path);
     const uniquePaths = [...new Set(paths)];
     expect(paths.length).toBe(uniquePaths.length);
@@ -433,7 +423,6 @@ name: My Skill
       throw new Error('Permission denied');
     });
 
-    // Should not throw
     const skills = discoverSkills('/base');
 
     expect(skills).toEqual([]);

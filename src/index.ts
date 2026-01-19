@@ -25,6 +25,9 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const EXIT_ERROR = 1;
+const EXIT_CANCELLED = 2;
+
 interface PackageJson {
   version?: string;
 }
@@ -107,6 +110,23 @@ async function main(): Promise<void> {
 }
 
 async function run(source: string | undefined, options: CLIOptions): Promise<void> {
+  let tempDirToClean: string | null = null;
+
+  const handleSignal = (): void => {
+    if (tempDirToClean) {
+      try {
+        cleanupTempDir(tempDirToClean);
+      } catch {
+        /* Cleanup errors are non-critical */
+      }
+    }
+    clack.outro(chalk.yellow('Interrupted'));
+    process.exit(EXIT_CANCELLED);
+  };
+
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
+
   clack.intro(chalk.cyan('skai - AI Agent Skills Package Manager'));
 
   if (!source) {
@@ -117,7 +137,7 @@ async function run(source: string | undefined, options: CLIOptions): Promise<voi
     clack.log.info('  skai https://github.com/org/repo');
     clack.log.info('  skai ./local/skills');
     clack.outro(chalk.red('No source provided'));
-    process.exit(1);
+    process.exit(EXIT_ERROR);
   }
 
   let tempDir: string | null = null;
@@ -143,6 +163,7 @@ async function run(source: string | undefined, options: CLIOptions): Promise<voi
           throw new Error('URL not found in parsed source');
         }
         tempDir = await cloneRepo(parsed.url, parsed.branch);
+        tempDirToClean = tempDir;
         skillsBasePath = tempDir;
         subpath = parsed.subpath;
         spinner.stop('Repository cloned');
@@ -406,11 +427,9 @@ async function run(source: string | undefined, options: CLIOptions): Promise<voi
           depsInstalled = installResult.installed;
         }
       } else {
-        if (!options.json) {
-          clack.log.info(chalk.bold('\n📦 Skills with dependencies:'));
-          for (const line of formatDependencySummary(skillDeps)) {
-            clack.log.info(`   ${line}`);
-          }
+        clack.log.info(chalk.bold('\n📦 Skills with dependencies:'));
+        for (const line of formatDependencySummary(skillDeps)) {
+          clack.log.info(`   ${line}`);
         }
 
         const conflicts = checkConflicts(skillDeps);
@@ -533,11 +552,19 @@ async function run(source: string | undefined, options: CLIOptions): Promise<voi
     if (results.skipped > 0) resultParts.push(chalk.yellow(`${results.skipped} skipped (already installed)`));
     if (results.failed > 0) resultParts.push(chalk.red(`${results.failed} failed`));
 
+    if (results.success > 0) {
+      const nextSteps: string[] = ['Restart your AI agent to load the new skills.'];
+      if (depsInstalled) {
+        nextSteps.push('Dependencies were installed to your project.');
+      }
+      clack.note(nextSteps.join('\n'), 'Next steps');
+    }
+
     clack.outro(resultParts.join(', ') || chalk.green('Done'));
   } catch (error) {
     clack.log.error(error instanceof Error ? error.message : String(error));
     clack.outro(chalk.red('Installation failed'));
-    process.exit(1);
+    process.exit(EXIT_ERROR);
   } finally {
     if (tempDir) {
       try {
@@ -551,5 +578,5 @@ async function run(source: string | undefined, options: CLIOptions): Promise<voi
 
 main().catch((error: unknown) => {
   console.error(chalk.red('Fatal error:'), error);
-  process.exit(1);
+  process.exit(EXIT_ERROR);
 });

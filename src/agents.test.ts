@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import { detectInstalledAgents, getAgentByName, getAllAgents, AGENTS } from './agents.js';
 
-// Mock fs module
 vi.mock('node:fs');
 
 const mockedFs = vi.mocked(fs);
@@ -25,8 +24,6 @@ describe('detectInstalledAgents', () => {
   });
 
   it('detects agents by config directory existence', () => {
-    // Return true for claude-code's config directory (.claude is the parent of .claude/skills/)
-    // detectInstalledAgents checks the parent of globalPath to determine if the agent is installed
     mockedFs.existsSync.mockImplementation((p) => {
       return String(p).includes('.claude');
     });
@@ -38,7 +35,6 @@ describe('detectInstalledAgents', () => {
   });
 
   it('detects multiple agents', () => {
-    // Return true for claude-code and cursor config directories
     mockedFs.existsSync.mockImplementation((p) => {
       const pathStr = String(p);
       return pathStr.includes('.claude') || pathStr.includes('.cursor');
@@ -56,8 +52,6 @@ describe('detectInstalledAgents', () => {
 
     detectInstalledAgents();
 
-    // Should check the config directory (parent of skills directory)
-    // For claude-code, globalPath is ~/.claude/skills/ so it checks ~/.claude
     const calls = mockedFs.existsSync.mock.calls.map(c => String(c[0]));
     expect(calls.some(c => c.includes('.claude'))).toBe(true);
   });

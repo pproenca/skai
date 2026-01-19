@@ -3,15 +3,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { cloneRepo, cleanupTempDir } from './git.js';
 
-// Test constants
 const MOCK_TEMP_PATH = '/tmp/skai-abc123';
 
-// Hoist mock to make it available in vi.mock factory
 const { mockClone } = vi.hoisted(() => ({
   mockClone: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock modules
 vi.mock('node:fs');
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof os>();
@@ -104,20 +101,16 @@ describe('cleanupTempDir', () => {
   it('handles already deleted directories', () => {
     mockedFs.existsSync.mockReturnValue(false);
 
-    // Should not throw
     cleanupTempDir(MOCK_TEMP_PATH);
 
-    // rmSync should not be called since directory doesn't exist
     expect(mockedFs.rmSync).not.toHaveBeenCalled();
   });
 
   it('rejects path traversal attempts', () => {
-    // Even with skai- in the path, traversal should fail
     expect(() => cleanupTempDir('/tmp/../etc/skai-fake')).toThrow();
   });
 
   it('rejects paths that resolve outside temp despite containing skai-', () => {
-    // This resolves to /etc/skai-fake, which is outside /tmp
     expect(() => cleanupTempDir('/tmp/../etc/skai-fake')).toThrow(
       'Refusing to cleanup directory outside temp'
     );
@@ -135,9 +128,6 @@ describe('cleanupTempDir', () => {
   });
 
   it('handles symlink resolution attacks', () => {
-    // If the resolved path goes outside temp, it should be rejected
-    // Path that looks safe but resolves outside
-    // Note: path.resolve handles .. segments
     expect(() => cleanupTempDir('/tmp/skai-abc/../../etc/passwd')).toThrow(
       'Refusing to cleanup directory outside temp'
     );

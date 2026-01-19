@@ -207,6 +207,13 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
+    if (key === "\x7f" || key === "\b") {
+      if (this.searchTerm.length > 0) {
+        this.searchTerm = this.searchTerm.slice(0, -1);
+        this.updateFilter();
+      }
+      return;
+    }
     if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
       this.searchTerm += key;
       this.updateFilter();
@@ -504,6 +511,13 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
+    if (key === "\x7f" || key === "\b") {
+      if (this.searchTerm.length > 0) {
+        this.searchTerm = this.searchTerm.slice(0, -1);
+        this.updateFilter();
+      }
+      return;
+    }
     if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
       this.searchTerm += key;
       this.updateFilter();
