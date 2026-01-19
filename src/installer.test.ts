@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { installSkillForAgent, uninstallSkill, isSkillInstalled } from './installer.js';
@@ -31,16 +31,11 @@ const globalOptions: InstallOptions = { global: true, yes: false };
 
 describe('installSkillForAgent', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
     // Default mock implementations
     mockedFs.existsSync.mockReturnValue(true);
     mockedFs.mkdirSync.mockReturnValue(undefined);
     mockedFs.readdirSync.mockReturnValue([]);
     mockedFs.copyFileSync.mockReturnValue(undefined);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   describe('path traversal prevention (sanitizeName)', () => {
@@ -223,14 +218,6 @@ describe('installSkillForAgent', () => {
 });
 
 describe('uninstallSkill', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('removes skill directory when exists', () => {
     mockedFs.existsSync.mockReturnValue(true);
     mockedFs.rmSync.mockReturnValue(undefined);
@@ -292,14 +279,6 @@ describe('uninstallSkill', () => {
 });
 
 describe('isSkillInstalled', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('returns true when skill directory exists', () => {
     mockedFs.existsSync.mockReturnValue(true);
 

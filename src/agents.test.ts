@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import { detectInstalledAgents, getAgentByName, getAllAgents, AGENTS } from './agents.js';
 
@@ -7,14 +7,6 @@ vi.mock('node:fs');
 const mockedFs = vi.mocked(fs);
 
 describe('detectInstalledAgents', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('returns empty array when no agents detected', () => {
     mockedFs.existsSync.mockReturnValue(false);
 

@@ -4,5 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    isolate: false,
+    mockReset: true,
+    restoreMocks: true,
   },
 });

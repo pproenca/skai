@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import { parseSource } from './source-parser.js';
 
@@ -9,13 +9,8 @@ const mockedFs = vi.mocked(fs);
 
 describe('parseSource', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
     // Default: paths don't exist (forces git parsing)
     mockedFs.existsSync.mockReturnValue(false);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   describe('GitHub shorthand', () => {

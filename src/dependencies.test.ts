@@ -19,10 +19,6 @@ vi.mock("node:fs");
 const mockFs = vi.mocked(fs);
 
 describe("extractDependencies", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("returns null when no package.json exists", () => {
     mockFs.existsSync.mockReturnValue(false);
 
@@ -98,7 +94,6 @@ describe("detectPackageManager", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     process.env = { ...originalEnv };
   });
 
@@ -215,10 +210,6 @@ describe("mergeDependencies", () => {
 });
 
 describe("checkConflicts", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("returns empty array when no project package.json", () => {
     mockFs.existsSync.mockReturnValue(false);
 
@@ -344,10 +335,6 @@ describe("formatDependencySummary", () => {
 });
 
 describe("hasProjectPackageJson", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("returns true when package.json exists", () => {
     mockFs.existsSync.mockReturnValue(true);
 

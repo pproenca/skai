@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { cloneRepo, cleanupTempDir } from './git.js';
@@ -28,14 +28,9 @@ const mockedOs = vi.mocked(os);
 
 describe('cloneRepo', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
     mockClone.mockResolvedValue(undefined);
     mockedOs.tmpdir.mockReturnValue('/tmp');
     mockedFs.mkdtempSync.mockReturnValue(MOCK_TEMP_PATH);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('creates temp directory with skai- prefix', async () => {
@@ -65,14 +60,9 @@ describe('cloneRepo', () => {
 
 describe('cleanupTempDir', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
     mockedOs.tmpdir.mockReturnValue('/tmp');
     mockedFs.existsSync.mockReturnValue(true);
     mockedFs.rmSync.mockReturnValue(undefined);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('removes directory within system temp', () => {

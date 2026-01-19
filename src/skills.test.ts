@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -195,14 +195,6 @@ describe('getQualifiedName', () => {
 describe('parseSkillMd', () => {
   const mockedFs = vi.mocked(fs);
 
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('parses frontmatter correctly', () => {
     mockedFs.readFileSync.mockReturnValue(`---
 name: My Skill
@@ -311,14 +303,6 @@ name: Test
 
 describe('discoverSkills', () => {
   const mockedFs = vi.mocked(fs);
-
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
 
   it('searches priority directories first', () => {
     mockedFs.existsSync.mockReturnValue(false);
