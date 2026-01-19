@@ -189,3 +189,6 @@ export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
   p.log.warn("No skills available to select.");
   return [];
 }
+
+// Export for testing
+export { categorizeNodes, addChildrenToGroup };

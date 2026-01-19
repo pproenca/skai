@@ -1,12 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   buildSkillTree,
   skillTreeToTreeNodes,
   flattenSingleCategories,
   matchesSkillFilter,
   getQualifiedName,
+  parseSkillMd,
+  discoverSkills,
 } from './skills.js';
 import type { Skill, TreeNode } from './types.js';
+
+// Mock fs module
+vi.mock('node:fs');
 
 // Helper to create a skill for testing
 function createSkill(name: string, category?: string[], description = ''): Skill {
@@ -184,5 +191,273 @@ describe('getQualifiedName', () => {
   it('returns nested path for deep categories', () => {
     const skill = createSkill('python', ['coding', 'backend']);
     expect(getQualifiedName(skill)).toBe('coding/backend/python');
+  });
+});
+
+// Tests for parseSkillMd
+describe('parseSkillMd', () => {
+  const mockedFs = vi.mocked(fs);
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('parses frontmatter correctly', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+name: My Skill
+description: A test skill
+---
+
+# My Skill Content
+`);
+
+    const result = parseSkillMd('/skills/my-skill/SKILL.md');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('My Skill');
+    expect(result?.description).toBe('A test skill');
+    expect(result?.content).toBe('# My Skill Content');
+  });
+
+  it('falls back to directory name when no name in frontmatter', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+description: A skill without name
+---
+
+# Content
+`);
+
+    const result = parseSkillMd('/skills/fallback-name/SKILL.md');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('fallback-name');
+  });
+
+  it('extracts category from path', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+name: Python
+---
+
+# Python skill
+`);
+
+    const result = parseSkillMd('/base/coding/backend/python/SKILL.md', '/base');
+
+    expect(result).not.toBeNull();
+    expect(result?.category).toEqual(['coding', 'backend']);
+  });
+
+  it('handles empty frontmatter', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+---
+
+# Just content
+`);
+
+    const result = parseSkillMd('/skills/empty-frontmatter/SKILL.md');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('empty-frontmatter');
+    expect(result?.description).toBe('');
+  });
+
+  it('filters transparent directories from category', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+name: Curated Skill
+---
+
+# Content
+`);
+
+    // .curated is a transparent directory
+    const result = parseSkillMd('/base/.curated/coding/skill/SKILL.md', '/base');
+
+    expect(result?.category).toEqual(['coding']);
+  });
+
+  it('returns null on read error', () => {
+    mockedFs.readFileSync.mockImplementation(() => {
+      throw new Error('File not found');
+    });
+
+    const result = parseSkillMd('/nonexistent/SKILL.md');
+
+    expect(result).toBeNull();
+  });
+
+  it('handles content without frontmatter', () => {
+    mockedFs.readFileSync.mockReturnValue(`# Just markdown
+
+No frontmatter here.
+`);
+
+    const result = parseSkillMd('/skills/no-frontmatter/SKILL.md');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('no-frontmatter');
+  });
+
+  it('sets path to skill directory', () => {
+    mockedFs.readFileSync.mockReturnValue(`---
+name: Test
+---
+`);
+
+    const result = parseSkillMd('/skills/test-skill/SKILL.md');
+
+    expect(result?.path).toBe('/skills/test-skill');
+  });
+});
+
+// Tests for discoverSkills
+describe('discoverSkills', () => {
+  const mockedFs = vi.mocked(fs);
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('searches priority directories first', () => {
+    // Mock no skills found anywhere
+    mockedFs.existsSync.mockReturnValue(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockReturnValue([]);
+
+    discoverSkills('/base');
+
+    // Should check for priority directories like 'skills', '.claude/skills', etc.
+    const existsCalls = mockedFs.existsSync.mock.calls.map(c => String(c[0]));
+    expect(existsCalls.some(c => c.includes('skills'))).toBe(true);
+  });
+
+  it('respects subpath parameter', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockReturnValue([]);
+
+    discoverSkills('/base', 'custom/path');
+
+    // Should check for /base/custom/path
+    const existsCalls = mockedFs.existsSync.mock.calls.map(c => String(c[0]));
+    expect(existsCalls.some(c => c.includes('custom/path') || c.includes('custom\\path'))).toBe(true);
+  });
+
+  it('skips excluded directories', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockImplementation((dir: string) => {
+      if (dir === '/base' || dir === '/base/skills') {
+        return [
+          { name: 'node_modules', isDirectory: () => true, isFile: () => false },
+          { name: '.git', isDirectory: () => true, isFile: () => false },
+          { name: 'valid-skill', isDirectory: () => true, isFile: () => false },
+        ];
+      }
+      if (dir === '/base/valid-skill' || dir === '/base/skills/valid-skill') {
+        return [
+          { name: 'SKILL.md', isDirectory: () => false, isFile: () => true },
+        ];
+      }
+      return [];
+    });
+
+    mockedFs.readFileSync.mockReturnValue(`---
+name: Valid Skill
+---
+`);
+
+    const skills = discoverSkills('/base');
+
+    // node_modules and .git should be skipped
+    const readdirCalls = (mockedFs.readdirSync as any).mock.calls.map((c: any[]) => String(c[0]));
+    expect(readdirCalls).not.toContain('/base/node_modules');
+    expect(readdirCalls).not.toContain('/base/.git');
+  });
+
+  it('deduplicates skills by path', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+
+    let callCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockImplementation((dir: string) => {
+      // Return SKILL.md for skills directory on first few calls
+      if (dir.endsWith('/skills') && callCount < 3) {
+        callCount++;
+        return [
+          { name: 'my-skill', isDirectory: () => true, isFile: () => false },
+        ];
+      }
+      if (dir.includes('my-skill')) {
+        return [
+          { name: 'SKILL.md', isDirectory: () => false, isFile: () => true },
+        ];
+      }
+      return [];
+    });
+
+    mockedFs.readFileSync.mockReturnValue(`---
+name: My Skill
+---
+`);
+
+    const skills = discoverSkills('/base');
+
+    // Should not have duplicates
+    const paths = skills.map(s => s.path);
+    const uniquePaths = [...new Set(paths)];
+    expect(paths.length).toBe(uniquePaths.length);
+  });
+
+  it('returns empty array when no skills found', () => {
+    mockedFs.existsSync.mockReturnValue(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockReturnValue([]);
+
+    const skills = discoverSkills('/empty-base');
+
+    expect(skills).toEqual([]);
+  });
+
+  it('handles read errors gracefully', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockImplementation(() => {
+      throw new Error('Permission denied');
+    });
+
+    // Should not throw
+    const skills = discoverSkills('/base');
+
+    expect(skills).toEqual([]);
+  });
+
+  it('finds skills in root directory', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockedFs.readdirSync as any).mockImplementation((dir: string) => {
+      if (dir === '/base') {
+        return [
+          { name: 'SKILL.md', isDirectory: () => false, isFile: () => true },
+        ];
+      }
+      return [];
+    });
+
+    mockedFs.readFileSync.mockReturnValue(`---
+name: Root Skill
+---
+`);
+
+    const skills = discoverSkills('/base');
+
+    expect(skills.some(s => s.name === 'Root Skill')).toBe(true);
   });
 });

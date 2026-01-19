@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenNodes, countSelected, getAllSkillIds } from './tree-select.js';
+import { flattenNodes, countSelected, getAllSkillIds, categorizeNodes, addChildrenToGroup } from './tree-select.js';
 import type { TreeNode, Skill } from './types.js';
 
 // Helper to create a skill for testing
@@ -213,5 +213,224 @@ describe('getAllSkillIds', () => {
     };
     const result = getAllSkillIds(node);
     expect(result).toEqual(['skill']);
+  });
+});
+
+// Tests for categorizeNodes - Bug #2 regression prevention
+describe('categorizeNodes', () => {
+  it('handles only uncategorized skills (Case 1)', () => {
+    // When all skills are at top level without categories
+    const nodes: TreeNode[] = [
+      { id: 's1', label: 'skill1', skill: createSkill('skill1'), hint: 'Skill 1 description' },
+      { id: 's2', label: 'skill2', skill: createSkill('skill2') },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized).toHaveLength(2);
+    expect(Object.keys(result.groups)).toHaveLength(0);
+    expect(result.uncategorized[0].label).toBe('skill1');
+    expect(result.uncategorized[0].hint).toBe('Skill 1 description');
+    expect(result.uncategorized[1].label).toBe('skill2');
+  });
+
+  it('handles only categorized skills (Case 2)', () => {
+    // When all skills are in categories
+    const nodes: TreeNode[] = [
+      {
+        id: 'coding',
+        label: 'Coding',
+        children: [
+          { id: 'python', label: 'Python', skill: createSkill('python') },
+          { id: 'typescript', label: 'TypeScript', skill: createSkill('typescript') },
+        ],
+      },
+      {
+        id: 'devops',
+        label: 'DevOps',
+        children: [
+          { id: 'docker', label: 'Docker', skill: createSkill('docker') },
+        ],
+      },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized).toHaveLength(0);
+    expect(Object.keys(result.groups)).toHaveLength(2);
+    expect(result.groups['Coding']).toHaveLength(2);
+    expect(result.groups['DevOps']).toHaveLength(1);
+  });
+
+  it('handles mixed categorized and uncategorized skills (Case 3)', () => {
+    // Bug #2 scenario: mix of both types
+    const nodes: TreeNode[] = [
+      {
+        id: 'coding',
+        label: 'Coding',
+        children: [
+          { id: 'python', label: 'Python', skill: createSkill('python') },
+        ],
+      },
+      { id: 'testing', label: 'Testing', skill: createSkill('testing') },
+      { id: 'linting', label: 'Linting', skill: createSkill('linting') },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized).toHaveLength(2);
+    expect(Object.keys(result.groups)).toHaveLength(1);
+    expect(result.groups['Coding']).toHaveLength(1);
+    expect(result.uncategorized.map(u => u.label)).toEqual(['Testing', 'Linting']);
+  });
+
+  it('handles empty nodes array', () => {
+    const result = categorizeNodes([]);
+
+    expect(result.uncategorized).toHaveLength(0);
+    expect(Object.keys(result.groups)).toHaveLength(0);
+  });
+
+  it('preserves hint from skill node', () => {
+    const nodes: TreeNode[] = [
+      { id: 's1', label: 'Skill', skill: createSkill('skill'), hint: 'Important hint' },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized[0].hint).toBe('Important hint');
+  });
+
+  it('handles deeply nested categories', () => {
+    const nodes: TreeNode[] = [
+      {
+        id: 'outer',
+        label: 'Outer Category',
+        children: [
+          {
+            id: 'inner',
+            label: 'Inner Category',
+            children: [
+              { id: 'deep-skill', label: 'Deep Skill', skill: createSkill('deep-skill') },
+            ],
+          },
+          { id: 'shallow-skill', label: 'Shallow Skill', skill: createSkill('shallow-skill') },
+        ],
+      },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized).toHaveLength(0);
+    expect(result.groups['Outer Category']).toHaveLength(1);
+    expect(result.groups['Outer Category'][0].label).toBe('Shallow Skill');
+    expect(result.groups['Inner Category']).toHaveLength(1);
+    expect(result.groups['Inner Category'][0].label).toBe('Deep Skill');
+  });
+
+  it('handles category with empty children', () => {
+    const nodes: TreeNode[] = [
+      {
+        id: 'empty-cat',
+        label: 'Empty Category',
+        children: [],
+      },
+      { id: 's1', label: 'Skill', skill: createSkill('skill') },
+    ];
+    const result = categorizeNodes(nodes);
+
+    expect(result.uncategorized).toHaveLength(1);
+    expect(result.groups['Empty Category']).toHaveLength(0);
+  });
+});
+
+// Tests for addChildrenToGroup
+describe('addChildrenToGroup', () => {
+  it('adds skills to current group', () => {
+    const children: TreeNode[] = [
+      { id: 's1', label: 'Skill 1', skill: createSkill('skill1'), hint: 'Hint 1' },
+      { id: 's2', label: 'Skill 2', skill: createSkill('skill2') },
+    ];
+    const currentGroup: { value: Skill; label: string; hint?: string }[] = [];
+    const allGroups: Record<string, { value: Skill; label: string; hint?: string }[]> = {};
+
+    addChildrenToGroup(children, currentGroup, allGroups);
+
+    expect(currentGroup).toHaveLength(2);
+    expect(currentGroup[0].label).toBe('Skill 1');
+    expect(currentGroup[0].hint).toBe('Hint 1');
+    expect(currentGroup[1].label).toBe('Skill 2');
+    expect(Object.keys(allGroups)).toHaveLength(0);
+  });
+
+  it('creates new groups for nested categories', () => {
+    const children: TreeNode[] = [
+      {
+        id: 'nested',
+        label: 'Nested Category',
+        children: [
+          { id: 'nested-skill', label: 'Nested Skill', skill: createSkill('nested-skill') },
+        ],
+      },
+    ];
+    const currentGroup: { value: Skill; label: string; hint?: string }[] = [];
+    const allGroups: Record<string, { value: Skill; label: string; hint?: string }[]> = {};
+
+    addChildrenToGroup(children, currentGroup, allGroups);
+
+    expect(currentGroup).toHaveLength(0);
+    expect(allGroups['Nested Category']).toBeDefined();
+    expect(allGroups['Nested Category']).toHaveLength(1);
+    expect(allGroups['Nested Category'][0].label).toBe('Nested Skill');
+  });
+
+  it('does not overwrite existing groups', () => {
+    const children: TreeNode[] = [
+      {
+        id: 'existing',
+        label: 'Existing Group',
+        children: [
+          { id: 'new-skill', label: 'New Skill', skill: createSkill('new-skill') },
+        ],
+      },
+    ];
+    const currentGroup: { value: Skill; label: string; hint?: string }[] = [];
+    const allGroups: Record<string, { value: Skill; label: string; hint?: string }[]> = {
+      'Existing Group': [{ value: createSkill('old-skill'), label: 'Old Skill' }],
+    };
+
+    addChildrenToGroup(children, currentGroup, allGroups);
+
+    // Should add to existing group, not overwrite
+    expect(allGroups['Existing Group']).toHaveLength(2);
+    expect(allGroups['Existing Group'][0].label).toBe('Old Skill');
+    expect(allGroups['Existing Group'][1].label).toBe('New Skill');
+  });
+
+  it('handles mixed skills and nested categories', () => {
+    const children: TreeNode[] = [
+      { id: 'skill-here', label: 'Skill Here', skill: createSkill('skill-here') },
+      {
+        id: 'subcat',
+        label: 'Sub Category',
+        children: [
+          { id: 'skill-there', label: 'Skill There', skill: createSkill('skill-there') },
+        ],
+      },
+    ];
+    const currentGroup: { value: Skill; label: string; hint?: string }[] = [];
+    const allGroups: Record<string, { value: Skill; label: string; hint?: string }[]> = {};
+
+    addChildrenToGroup(children, currentGroup, allGroups);
+
+    expect(currentGroup).toHaveLength(1);
+    expect(currentGroup[0].label).toBe('Skill Here');
+    expect(allGroups['Sub Category']).toHaveLength(1);
+    expect(allGroups['Sub Category'][0].label).toBe('Skill There');
+  });
+
+  it('handles empty children array', () => {
+    const currentGroup: { value: Skill; label: string; hint?: string }[] = [];
+    const allGroups: Record<string, { value: Skill; label: string; hint?: string }[]> = {};
+
+    addChildrenToGroup([], currentGroup, allGroups);
+
+    expect(currentGroup).toHaveLength(0);
+    expect(Object.keys(allGroups)).toHaveLength(0);
   });
 });
