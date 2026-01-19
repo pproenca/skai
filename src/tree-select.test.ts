@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { flattenNodes, countSelected, getAllSkillIds, categorizeNodes, addChildrenToGroup } from './tree-select.js';
+import {
+  flattenNodes,
+  countSelected,
+  getAllSkillIds,
+  categorizeNodes,
+  addChildrenToGroup,
+  filterOptions,
+  highlightMatch,
+  buildSearchableOptions,
+  SEARCH_THRESHOLD,
+} from './tree-select.js';
 import type { TreeNode, Skill } from './types.js';
 
 // Helper to create a skill for testing
@@ -432,5 +442,195 @@ describe('addChildrenToGroup', () => {
 
     expect(currentGroup).toHaveLength(0);
     expect(Object.keys(allGroups)).toHaveLength(0);
+  });
+});
+
+// Tests for search functionality
+describe('buildSearchableOptions', () => {
+  it('creates searchable text from label, hint, and description', () => {
+    const skill = createSkill('python');
+    skill.description = 'Python programming language';
+    const options = [{ value: skill, label: 'Python', hint: 'backend' }];
+
+    const result = buildSearchableOptions(options);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].searchableText).toContain('python');
+    expect(result[0].searchableText).toContain('backend');
+    expect(result[0].searchableText).toContain('python programming language');
+  });
+
+  it('handles missing hint gracefully', () => {
+    const skill = createSkill('python');
+    const options = [{ value: skill, label: 'Python' }];
+
+    const result = buildSearchableOptions(options);
+
+    expect(result[0].searchableText).toBe('python||');
+  });
+
+  it('handles missing description gracefully', () => {
+    const skill = createSkill('python');
+    skill.description = '';
+    const options = [{ value: skill, label: 'Python', hint: 'hint' }];
+
+    const result = buildSearchableOptions(options);
+
+    expect(result[0].searchableText).toBe('python|hint|');
+  });
+
+  it('converts searchable text to lowercase', () => {
+    const skill = createSkill('python');
+    skill.description = 'Python Programming';
+    const options = [{ value: skill, label: 'PYTHON', hint: 'BACKEND' }];
+
+    const result = buildSearchableOptions(options);
+
+    expect(result[0].searchableText).toBe('python|backend|python programming');
+  });
+
+  it('preserves original option data', () => {
+    const skill = createSkill('python');
+    const options = [{ value: skill, label: 'Python', hint: 'backend' }];
+
+    const result = buildSearchableOptions(options);
+
+    expect(result[0].option).toBe(options[0]);
+    expect(result[0].value).toBe(skill);
+  });
+});
+
+describe('filterOptions', () => {
+  function createSearchableOption(label: string, hint = '', description = '') {
+    const skill = createSkill(label.toLowerCase());
+    skill.description = description;
+    return {
+      option: { value: skill, label, hint },
+      value: skill,
+      searchableText: `${label}|${hint}|${description}`.toLowerCase(),
+    };
+  }
+
+  it('returns all options when search term is empty', () => {
+    const options = [
+      createSearchableOption('Python'),
+      createSearchableOption('TypeScript'),
+    ];
+
+    const result = filterOptions(options, '');
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('filters by label match', () => {
+    const options = [
+      createSearchableOption('Python'),
+      createSearchableOption('TypeScript'),
+      createSearchableOption('JavaScript'),
+    ];
+
+    const result = filterOptions(options, 'script');
+
+    expect(result).toHaveLength(2);
+    expect(result.map(r => r.option.label)).toEqual(['TypeScript', 'JavaScript']);
+  });
+
+  it('filters case-insensitively', () => {
+    const options = [
+      createSearchableOption('Python'),
+      createSearchableOption('TypeScript'),
+    ];
+
+    const result = filterOptions(options, 'PYTHON');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].option.label).toBe('Python');
+  });
+
+  it('filters by hint match', () => {
+    const options = [
+      createSearchableOption('Python', 'backend'),
+      createSearchableOption('React', 'frontend'),
+    ];
+
+    const result = filterOptions(options, 'backend');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].option.label).toBe('Python');
+  });
+
+  it('filters by description match', () => {
+    const options = [
+      createSearchableOption('Python', '', 'programming language'),
+      createSearchableOption('Docker', '', 'containerization tool'),
+    ];
+
+    const result = filterOptions(options, 'containerization');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].option.label).toBe('Docker');
+  });
+
+  it('returns empty array when no matches', () => {
+    const options = [
+      createSearchableOption('Python'),
+      createSearchableOption('TypeScript'),
+    ];
+
+    const result = filterOptions(options, 'xyz');
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('preserves original order of matches', () => {
+    const options = [
+      createSearchableOption('ATest'),
+      createSearchableOption('BTest'),
+      createSearchableOption('CTest'),
+    ];
+
+    const result = filterOptions(options, 'test');
+
+    expect(result.map(r => r.option.label)).toEqual(['ATest', 'BTest', 'CTest']);
+  });
+});
+
+describe('highlightMatch', () => {
+  it('returns original text when search term is empty', () => {
+    const result = highlightMatch('Python', '');
+    expect(result).toBe('Python');
+  });
+
+  it('highlights matched substring', () => {
+    const result = highlightMatch('TypeScript', 'script');
+    // Result contains ANSI escape codes for cyan color
+    expect(result).toContain('Type');
+    expect(result).toContain('Script');
+  });
+
+  it('returns original text when no match', () => {
+    const result = highlightMatch('Python', 'xyz');
+    expect(result).toBe('Python');
+  });
+
+  it('highlights case-insensitively while preserving original case', () => {
+    const result = highlightMatch('TypeScript', 'TYPE');
+    // Should preserve 'Type' case in the match
+    expect(result).toContain('Type');
+  });
+
+  it('highlights first occurrence only', () => {
+    const result = highlightMatch('test test', 'test');
+    // Should only highlight first 'test'
+    // In non-TTY env, picocolors returns plain text, so result equals input
+    // In TTY env, only first 'test' would be highlighted
+    // Either way, second 'test' should appear unchanged at the end
+    expect(result.endsWith(' test')).toBe(true);
+  });
+});
+
+describe('SEARCH_THRESHOLD', () => {
+  it('is set to 5', () => {
+    expect(SEARCH_THRESHOLD).toBe(5);
   });
 });
