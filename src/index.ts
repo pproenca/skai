@@ -80,7 +80,7 @@ async function run(source: string | undefined, options: CLIOptions) {
     clack.log.error("Please provide a source (GitHub repo, URL, or local path)");
     clack.log.info("Usage: skai <source> [options]");
     clack.log.info("Examples:");
-    clack.log.info("  skai vercel-labs/agent-skills");
+    clack.log.info("  skai pproenca/dot-skills");
     clack.log.info("  skai https://github.com/org/repo");
     clack.log.info("  skai ./local/skills");
     clack.outro(chalk.red("No source provided"));

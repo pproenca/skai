@@ -11,7 +11,7 @@ npm install -g skai
 Or run directly with npx:
 
 ```bash
-npx skai vercel-labs/agent-skills
+npx skai pproenca/dot-skills
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ skai <source> [options]
 
 ### Source Formats
 
-- **GitHub shorthand**: `skai vercel-labs/agent-skills`
+- **GitHub shorthand**: `skai pproenca/dot-skills`
 - **Full GitHub URL**: `skai https://github.com/org/repo`
 - **Direct skill path**: `skai https://github.com/org/repo/tree/main/skills/my-skill`
 - **GitLab URL**: `skai https://gitlab.com/org/repo`
@@ -45,22 +45,22 @@ skai <source> [options]
 
 ```bash
 # List skills in a repository
-skai vercel-labs/agent-skills --list
+skai pproenca/dot-skills --list
 
 # Install all skills to detected agents
-skai vercel-labs/agent-skills
+skai pproenca/dot-skills
 
 # Install specific skill
-skai vercel-labs/agent-skills -s web-design-guidelines
+skai pproenca/dot-skills -s web-design-guidelines
 
 # Install to specific agent
-skai vercel-labs/agent-skills -a claude-code
+skai pproenca/dot-skills -a claude-code
 
 # Install globally
-skai vercel-labs/agent-skills -g
+skai pproenca/dot-skills -g
 
 # Non-interactive install
-skai vercel-labs/agent-skills -y
+skai pproenca/dot-skills -y
 
 # Install from local directory
 skai ./my-skills -a cursor -g
