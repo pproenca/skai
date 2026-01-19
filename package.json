@@ -1,0 +1,49 @@
+{
+  "name": "skai",
+  "version": "0.0.1",
+  "description": "The package manager for AI agent skills, commands and plugins",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "skai": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "skills",
+    "package-manager",
+    "cli"
+  ],
+  "author": "pproenca-user",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "gray-matter": "^4.0.3",
+    "ink": "^6.6.0",
+    "react": "^19.2.3",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.8",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.17"
+  }
+}
