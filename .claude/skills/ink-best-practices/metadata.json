@@ -1,0 +1,14 @@
+{
+  "version": "0.1.0",
+  "organization": "Community",
+  "technology": "Ink",
+  "date": "January 2026",
+  "abstract": "Comprehensive performance optimization guide for Ink CLI applications, designed for AI agents and LLMs. Contains 42 rules across 8 categories, prioritized by impact from critical (render optimization, static content) to incremental (text styling). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations, and specific impact metrics to guide automated refactoring and code generation.",
+  "references": [
+    "https://github.com/vadimdemedes/ink",
+    "https://vadimdemedes.com/posts/ink-3",
+    "https://react.dev",
+    "https://developerlife.com/2021/11/25/ink-v3-advanced-ui-components/",
+    "https://blog.logrocket.com/add-interactivity-to-your-clis-with-react/"
+  ]
+}
