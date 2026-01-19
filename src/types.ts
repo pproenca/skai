@@ -74,4 +74,32 @@ export interface CLIOptions {
   skill?: string[];
   list: boolean;
   yes: boolean;
+  json: boolean;
+}
+
+export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+export interface SkillDependencies {
+  skillName: string;
+  dependencies: Record<string, string>;
+}
+
+export interface DependencyConflict {
+  packageName: string;
+  skillVersion: string;
+  projectVersion: string;
+  skillName: string;
+}
+
+export interface DependencyInstallResult {
+  installed: boolean;
+  packageManager: PackageManager;
+  error?: string;
+}
+
+export interface JsonOutput {
+  skills_installed: string[];
+  dependencies: Record<string, Record<string, string>>;
+  dependencies_installed: boolean;
+  package_manager: PackageManager | null;
 }

@@ -38,8 +38,15 @@ skai <source> [options]
 | `-s, --skill <skills...>` | Install specific skills by name |
 | `-l, --list` | List available skills without installing |
 | `-y, --yes` | Skip confirmation prompts |
+| `--json` | Output results in JSON format (for CI/scripts) |
 | `-V, --version` | Display version |
 | `-h, --help` | Display help |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SKAI_PACKAGE_MANAGER` | Override package manager detection (npm, pnpm, yarn, bun) |
 
 ### Examples
 
@@ -101,6 +108,34 @@ description: Brief explanation of what this skill does
 
 Instructions and implementation details...
 ```
+
+### Skill Dependencies
+
+Skills can declare npm dependencies in a `package.json` file. When installing skills with dependencies, skai will:
+
+1. Detect dependencies from each skill's `package.json`
+2. Prompt you to install them (or auto-install with `-y`)
+3. Use your project's detected package manager (pnpm, npm, yarn, or bun)
+
+Example skill with dependencies:
+
+```
+my-skill/
+├── SKILL.md
+└── package.json
+```
+
+```json
+{
+  "name": "my-skill",
+  "dependencies": {
+    "zod": "^3.0.0",
+    "openai": "^4.0.0"
+  }
+}
+```
+
+Dependencies are installed to your project's `node_modules`, not the skill directory. Only `dependencies` are installed (not `devDependencies`).
 
 ### Repository Structure
 

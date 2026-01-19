@@ -5,15 +5,30 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { CLIOptions, AgentConfig, Skill, SkillTreeNode } from "./types.js";
+import type { CLIOptions, AgentConfig, Skill, SkillTreeNode, PackageManager, SkillDependencies, JsonOutput } from "./types.js";
 import { parseSource } from "./source-parser.js";
 import { cloneRepo, cleanupTempDir } from "./git.js";
 import { discoverSkills, buildSkillTree, skillTreeToTreeNodes, matchesSkillFilter, flattenSingleCategories } from "./skills.js";
 import { detectInstalledAgents, getAllAgents, getAgentByName } from "./agents.js";
 import { installSkillForAgent, isSkillInstalled } from "./installer.js";
 import { treeSelect } from "./tree-select.js";
+import {
+  extractDependencies,
+  detectPackageManager,
+  mergeDependencies,
+  checkConflicts,
+  formatManualInstallCommand,
+  formatDependencySummary,
+  installDependencies,
+  hasProjectPackageJson,
+} from "./dependencies.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function showManualInstallHint(deps: Record<string, string>, pm: PackageManager): void {
+  const command = formatManualInstallCommand(deps, pm);
+  clack.note(command, "Install manually");
+}
 
 function getVersion(): string {
   try {
@@ -66,6 +81,7 @@ async function main() {
     .option("-s, --skill <skills...>", "Install specific skills by name")
     .option("-l, --list", "List available skills without installing", false)
     .option("-y, --yes", "Skip confirmation prompts", false)
+    .option("--json", "Output results in JSON format", false)
     .action(async (source: string | undefined, options: CLIOptions) => {
       await run(source, options);
     });
@@ -312,6 +328,7 @@ async function run(source: string | undefined, options: CLIOptions) {
     };
 
     const installOptions = { global: isGlobal, yes: options.yes };
+    const installedSkillNames: string[] = [];
 
     for (const skill of selectedSkills) {
       for (const agent of selectedAgents) {
@@ -325,14 +342,185 @@ async function run(source: string | undefined, options: CLIOptions) {
 
         if (result.success) {
           results.success++;
+          if (!installedSkillNames.includes(skill.name)) {
+            installedSkillNames.push(skill.name);
+          }
         } else {
           results.failed++;
-          clack.log.warn(`Failed to install ${skill.name} to ${agent.displayName}: ${result.error}`);
+          if (!options.json) {
+            clack.log.warn(`Failed to install ${skill.name} to ${agent.displayName}: ${result.error}`);
+          }
         }
       }
     }
 
-    installSpinner.stop("Installation complete");
+    installSpinner.stop(`Installed ${results.success} skill(s)`);
+
+    // Scan for dependencies
+    const depSpinner = clack.spinner();
+    depSpinner.start("Scanning for dependencies...");
+
+    const skillDeps: SkillDependencies[] = [];
+    for (const skill of selectedSkills) {
+      const deps = extractDependencies(skill.path);
+      if (deps) {
+        skillDeps.push(deps);
+      }
+    }
+
+    depSpinner.stop(
+      skillDeps.length > 0
+        ? `Found dependencies in ${skillDeps.length} skill(s)`
+        : "No dependencies found"
+    );
+
+    // Track dependency installation result for JSON output
+    let depsInstalled = false;
+    let usedPackageManager: PackageManager | null = null;
+
+    // Handle dependency installation
+    if (skillDeps.length > 0) {
+      const mergedDeps = mergeDependencies(skillDeps);
+      const detectedPm = detectPackageManager();
+      usedPackageManager = detectedPm;
+
+      // JSON output mode
+      if (options.json) {
+        // Auto-install in JSON mode (non-interactive)
+        if (hasProjectPackageJson()) {
+          const installResult = await installDependencies(mergedDeps, detectedPm);
+          depsInstalled = installResult.installed;
+        }
+      } else {
+        // Interactive mode
+        if (!options.json) {
+          clack.log.info(chalk.bold("\n📦 Skills with dependencies:"));
+          for (const line of formatDependencySummary(skillDeps)) {
+            clack.log.info(`   ${line}`);
+          }
+        }
+
+        // Check for conflicts
+        const conflicts = checkConflicts(skillDeps);
+        if (conflicts.length > 0) {
+          clack.log.warn(chalk.yellow("\n⚠ Dependency conflicts detected:"));
+          for (const conflict of conflicts) {
+            clack.log.warn(
+              `   • ${conflict.packageName}: skill requires ${conflict.skillVersion}, project has ${conflict.projectVersion}`
+            );
+          }
+        }
+
+        const isInteractive = process.stdout.isTTY && !options.yes;
+
+        if (isInteractive) {
+          // Prompt user for package manager choice
+          const pmChoice = await clack.select({
+            message: "Install dependencies now?",
+            options: [
+              { value: detectedPm, label: `Yes, install with ${detectedPm} (detected)` },
+              ...(["npm", "pnpm", "yarn", "bun"] as const)
+                .filter((pm) => pm !== detectedPm)
+                .map((pm) => ({ value: pm, label: `Yes, install with ${pm}` })),
+              { value: "skip", label: "Skip (install manually later)" },
+            ],
+          });
+
+          if (clack.isCancel(pmChoice)) {
+            showManualInstallHint(mergedDeps, detectedPm);
+            clack.outro(chalk.yellow("Cancelled"));
+            return;
+          }
+
+          if (pmChoice === "skip") {
+            showManualInstallHint(mergedDeps, detectedPm);
+          } else {
+            const pm = pmChoice as PackageManager;
+            usedPackageManager = pm;
+
+            // Check if project has package.json
+            if (!hasProjectPackageJson()) {
+              clack.log.warn("No package.json found in current directory.");
+              const createPkg = await clack.confirm({
+                message: "Create a package.json file?",
+              });
+
+              if (clack.isCancel(createPkg) || !createPkg) {
+                showManualInstallHint(mergedDeps, pm);
+              } else {
+                // Create minimal package.json
+                fs.writeFileSync(
+                  path.join(process.cwd(), "package.json"),
+                  JSON.stringify({ name: path.basename(process.cwd()), version: "1.0.0", private: true }, null, 2)
+                );
+                clack.log.info("Created package.json");
+              }
+            }
+
+            if (hasProjectPackageJson()) {
+              // Install dependencies with SIGINT handling
+              const controller = new AbortController();
+              const sigintHandler = () => {
+                controller.abort();
+              };
+              process.on("SIGINT", sigintHandler);
+
+              const depInstallSpinner = clack.spinner();
+              depInstallSpinner.start(
+                `Installing dependencies with ${pm} (${Object.keys(mergedDeps).length} packages)...`
+              );
+
+              const installResult = await installDependencies(mergedDeps, pm, process.cwd(), controller.signal);
+
+              process.off("SIGINT", sigintHandler);
+
+              if (installResult.installed) {
+                depInstallSpinner.stop("Dependencies installed");
+                depsInstalled = true;
+              } else {
+                depInstallSpinner.stop("Dependency installation failed");
+                clack.log.warn(installResult.error || "Unknown error");
+                showManualInstallHint(mergedDeps, pm);
+              }
+            }
+          }
+        } else {
+          // Non-interactive mode: auto-install
+          if (!hasProjectPackageJson()) {
+            clack.log.warn("No package.json found. Skipping dependency installation.");
+            showManualInstallHint(mergedDeps, detectedPm);
+          } else {
+            const depInstallSpinner = clack.spinner();
+            depInstallSpinner.start(
+              `Installing dependencies with ${detectedPm} (${Object.keys(mergedDeps).length} packages)...`
+            );
+
+            const installResult = await installDependencies(mergedDeps, detectedPm);
+
+            if (installResult.installed) {
+              depInstallSpinner.stop("Dependencies installed");
+              depsInstalled = true;
+            } else {
+              depInstallSpinner.stop("Dependency installation failed");
+              clack.log.warn(installResult.error || "Unknown error");
+              showManualInstallHint(mergedDeps, detectedPm);
+            }
+          }
+        }
+      }
+    }
+
+    // JSON output
+    if (options.json) {
+      const jsonOutput: JsonOutput = {
+        skills_installed: installedSkillNames,
+        dependencies: Object.fromEntries(skillDeps.map((s) => [s.skillName, s.dependencies])),
+        dependencies_installed: depsInstalled,
+        package_manager: usedPackageManager,
+      };
+      console.log(JSON.stringify(jsonOutput, null, 2));
+      return;
+    }
 
     // Display results
     const resultParts: string[] = [];
