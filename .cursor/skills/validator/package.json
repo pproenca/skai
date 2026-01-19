@@ -1,6 +1,0 @@
-{
-  "name": "api-validator",
-  "dependencies": {
-    "zod": "^3.23.0"
-  }
-}
