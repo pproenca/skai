@@ -1063,21 +1063,40 @@ async function main(): Promise<void> {
   program.addHelpText(
     'after',
     `
-Examples:
-  $ skai pproenca/dot-skills              Install skills from GitHub
-  $ skai https://github.com/org/repo      Install from full URL
-  $ skai ./local/skills                   Install from local directory
-  $ skai pproenca/dot-skills -s typescript  Install specific skill
-  $ skai pproenca/dot-skills -a claude-code Install to specific agent
-  $ skai pproenca/dot-skills --dry-run    Preview installation
-  $ skai list                             List installed skills
-  $ skai list -a cursor                   List skills for specific agent
-  $ skai uninstall typescript             Uninstall a skill
-  $ skai uninstall typescript -a cursor   Uninstall from specific agent
+${chalk.yellow('EXAMPLES')}
+  ${chalk.dim('# Install skills from GitHub')}
+  $ skai pproenca/dot-skills
 
-Supported Agents:
+  ${chalk.dim('# Install from full URL')}
+  $ skai https://github.com/org/repo
+
+  ${chalk.dim('# Install from local directory')}
+  $ skai ./local/skills
+
+  ${chalk.dim('# Install specific skill to specific agent')}
+  $ skai pproenca/dot-skills -s typescript -a claude-code
+
+  ${chalk.dim('# Preview installation without changes')}
+  $ skai pproenca/dot-skills --dry-run
+
+  ${chalk.dim('# List installed skills')}
+  $ skai list
+
+  ${chalk.dim('# List skills for specific agent')}
+  $ skai list -a cursor
+
+  ${chalk.dim('# Uninstall a skill')}
+  $ skai uninstall typescript
+
+  ${chalk.dim('# Uninstall from specific agent')}
+  $ skai uninstall typescript -a cursor
+
+${chalk.yellow('SUPPORTED AGENTS')}
   claude-code, cursor, copilot, windsurf, codex, opencode, amp,
   kilo-code, roo-code, goose, gemini, antigravity, clawdbot, droid
+
+${chalk.yellow('LEARN MORE')}
+  GitHub: ${chalk.cyan('https://github.com/pproenca/skai')}
 `
   );
 
