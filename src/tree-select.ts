@@ -67,50 +67,66 @@ export function getAllSkillIds(node: TreeNode): string[] {
   return ids;
 }
 
+type SkillOption = { value: Skill; label: string; hint?: string };
+
 /**
- * Transform tree structure to @clack's groupMultiselect format
+ * Separate skills into categorized (have group) and uncategorized (no group)
  */
-function treeToClackGroups(
-  nodes: TreeNode[]
-): Record<string, Array<{ value: Skill; label: string; hint?: string }>> {
-  const groups: Record<
-    string,
-    Array<{ value: Skill; label: string; hint?: string }>
-  > = {};
+function categorizeNodes(nodes: TreeNode[]): {
+  uncategorized: SkillOption[];
+  groups: Record<string, SkillOption[]>;
+} {
+  const uncategorized: SkillOption[] = [];
+  const groups: Record<string, SkillOption[]> = {};
 
   for (const node of nodes) {
     if (node.skill) {
-      // Top-level skill without category
-      const groupName = "Skills";
-      if (!groups[groupName]) groups[groupName] = [];
-      groups[groupName].push({
+      // Top-level skill without category → uncategorized
+      uncategorized.push({
         value: node.skill,
         label: node.label,
         hint: node.hint,
       });
     } else if (node.children) {
-      // Category - use label as group name
+      // Category node
       const groupName = node.label;
       groups[groupName] = [];
-      for (const child of node.children) {
-        if (child.skill) {
-          groups[groupName].push({
-            value: child.skill,
-            label: child.label,
-            hint: child.hint,
-          });
-        }
-        // Note: For deeply nested categories, we'd need recursive handling
-        // Current implementation assumes max 2 levels (category -> skills)
-      }
+      addChildrenToGroup(node.children, groups[groupName], groups);
     }
   }
 
-  return groups;
+  return { uncategorized, groups };
 }
 
 /**
- * Interactive tree selection using @clack/prompts groupMultiselect
+ * Recursively add children to groups, handling nested categories
+ */
+function addChildrenToGroup(
+  children: TreeNode[],
+  currentGroup: SkillOption[],
+  allGroups: Record<string, SkillOption[]>
+): void {
+  for (const child of children) {
+    if (child.skill) {
+      currentGroup.push({
+        value: child.skill,
+        label: child.label,
+        hint: child.hint,
+      });
+    } else if (child.children) {
+      // Nested category - create new group
+      const nestedGroupName = child.label;
+      if (!allGroups[nestedGroupName]) {
+        allGroups[nestedGroupName] = [];
+      }
+      addChildrenToGroup(child.children, allGroups[nestedGroupName], allGroups);
+    }
+  }
+}
+
+/**
+ * Interactive tree selection using @clack/prompts multiselect or groupMultiselect
+ * based on whether skills are categorized
  */
 export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
   // Check if stdin supports raw mode (required for interactive input)
@@ -120,24 +136,56 @@ export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
     );
   }
 
-  const groups = treeToClackGroups(nodes);
+  const { uncategorized, groups } = categorizeNodes(nodes);
+  const hasGroups = Object.keys(groups).length > 0;
+  const hasUncategorized = uncategorized.length > 0;
 
-  // Check if we have any options
-  const hasOptions = Object.values(groups).some((g) => g.length > 0);
-  if (!hasOptions) {
-    p.log.warn("No skills available to select.");
-    return [];
+  // Case 1: Only uncategorized skills → use regular multiselect
+  if (hasUncategorized && !hasGroups) {
+    const selected = await p.multiselect({
+      message: "Select skills to install:",
+      options: uncategorized,
+      required: false,
+    });
+
+    if (p.isCancel(selected)) {
+      throw new Error("Selection cancelled");
+    }
+    return selected as Skill[];
   }
 
-  const selected = await p.groupMultiselect({
-    message: "Select skills to install:",
-    options: groups,
-    required: false,
-  });
+  // Case 2: Only categorized skills → use groupMultiselect
+  if (hasGroups && !hasUncategorized) {
+    const selected = await p.groupMultiselect({
+      message: "Select skills to install:",
+      options: groups,
+      required: false,
+    });
 
-  if (p.isCancel(selected)) {
-    throw new Error("Selection cancelled");
+    if (p.isCancel(selected)) {
+      throw new Error("Selection cancelled");
+    }
+    return selected as Skill[];
   }
 
-  return selected as Skill[];
+  // Case 3: Mixed → use groupMultiselect with uncategorized in "Other" group
+  if (hasGroups && hasUncategorized) {
+    const mixedGroups = { ...groups };
+    mixedGroups["Other"] = uncategorized;
+
+    const selected = await p.groupMultiselect({
+      message: "Select skills to install:",
+      options: mixedGroups,
+      required: false,
+    });
+
+    if (p.isCancel(selected)) {
+      throw new Error("Selection cancelled");
+    }
+    return selected as Skill[];
+  }
+
+  // No skills available
+  p.log.warn("No skills available to select.");
+  return [];
 }
