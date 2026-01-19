@@ -1,6 +1,6 @@
 {
   "name": "skai",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "The package manager for AI agent skills, commands and plugins",
   "type": "module",
   "main": "./dist/index.js",
