@@ -224,31 +224,35 @@ describe('uninstallSkill', () => {
 
     const result = uninstallSkill('my-skill', testAgent, projectOptions);
 
-    expect(result).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.skillName).toBe('my-skill');
+    expect(result.agent).toBe(testAgent);
     expect(mockedFs.rmSync).toHaveBeenCalledWith(
       expect.stringContaining('my-skill'),
       { recursive: true, force: true }
     );
   });
 
-  it('returns false for non-existent skills', () => {
+  it('returns success=false for non-existent skills', () => {
     mockedFs.existsSync.mockReturnValue(false);
 
     const result = uninstallSkill('non-existent', testAgent, projectOptions);
 
-    expect(result).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Skill not found');
     expect(mockedFs.rmSync).not.toHaveBeenCalled();
   });
 
   it('rejects path traversal attempts', () => {
     mockedFs.existsSync.mockReturnValue(true);
+    mockedFs.rmSync.mockReturnValue(undefined);
 
     // Even if the path exists, path traversal should be blocked
     const result = uninstallSkill('../../../etc', testAgent, projectOptions);
 
     // After sanitization "../../../etc" becomes "etc", which is within base path
     // So this should actually succeed since the sanitized path is safe
-    expect(result).toBe(true);
+    expect(result.success).toBe(true);
   });
 
   it('sanitizes skill names with special characters', () => {
@@ -257,7 +261,7 @@ describe('uninstallSkill', () => {
 
     const result = uninstallSkill('skill/with\\slashes', testAgent, projectOptions);
 
-    expect(result).toBe(true);
+    expect(result.success).toBe(true);
     // The path should contain sanitized name "skillwithslashes"
     expect(mockedFs.rmSync).toHaveBeenCalledWith(
       expect.stringContaining('skillwithslashes'),
@@ -269,12 +273,25 @@ describe('uninstallSkill', () => {
     mockedFs.existsSync.mockReturnValue(true);
     mockedFs.rmSync.mockReturnValue(undefined);
 
-    uninstallSkill('my-skill', testAgent, globalOptions);
+    const result = uninstallSkill('my-skill', testAgent, globalOptions);
 
+    expect(result.success).toBe(true);
     expect(mockedFs.rmSync).toHaveBeenCalledWith(
       expect.stringMatching(/\/home\/user\/.test\/skills\/my-skill$/),
       expect.any(Object)
     );
+  });
+
+  it('returns error when rmSync throws', () => {
+    mockedFs.existsSync.mockReturnValue(true);
+    mockedFs.rmSync.mockImplementation(() => {
+      throw new Error('Permission denied');
+    });
+
+    const result = uninstallSkill('my-skill', testAgent, projectOptions);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Permission denied');
   });
 });
 

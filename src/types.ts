@@ -103,3 +103,25 @@ export interface JsonOutput {
   dependencies_installed: boolean;
   package_manager: PackageManager | null;
 }
+
+export interface ListJsonOutput {
+  skills: {
+    name: string;
+    path: string;
+    agent: string;
+    scope: "project" | "global";
+  }[];
+}
+
+export interface UninstallJsonOutput {
+  skills_uninstalled: string[];
+  errors: { skill: string; agent: string; error: string }[];
+}
+
+export interface SkillInstallStatus {
+  skillName: string;
+  agentName: string;
+  status: "installed" | "skipped" | "failed" | "would-install";
+  path?: string;
+  reason?: string;
+}

@@ -98,24 +98,110 @@ export function installSkillForAgent(
   }
 }
 
+export interface UninstallResult {
+  skillName: string;
+  agent: AgentConfig;
+  success: boolean;
+  targetPath: string;
+  error?: string;
+}
+
 export function uninstallSkill(
   skillName: string,
   agent: AgentConfig,
   options: InstallOptions
-): boolean {
+): UninstallResult {
   const basePath = options.global ? agent.globalPath : path.join(process.cwd(), agent.projectPath);
   const sanitizedName = sanitizeName(skillName);
   const targetPath = path.join(basePath, sanitizedName);
 
   // Security: Validate the target path is within the base path
   if (!isPathSafe(targetPath, basePath)) {
-    return false;
+    return {
+      skillName,
+      agent,
+      success: false,
+      targetPath,
+      error: `Invalid skill name: ${skillName}`,
+    };
   }
 
   if (fs.existsSync(targetPath)) {
-    fs.rmSync(targetPath, { recursive: true, force: true });
-    return true;
+    try {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+      return { skillName, agent, success: true, targetPath };
+    } catch (error) {
+      return {
+        skillName,
+        agent,
+        success: false,
+        targetPath,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
-  return false;
+  return {
+    skillName,
+    agent,
+    success: false,
+    targetPath,
+    error: "Skill not found",
+  };
+}
+
+export interface InstalledSkill {
+  name: string;
+  path: string;
+  agent: AgentConfig;
+  scope: "project" | "global";
+}
+
+export function listInstalledSkills(
+  agent: AgentConfig,
+  options: { global?: boolean; projectOnly?: boolean } = {}
+): InstalledSkill[] {
+  const skills: InstalledSkill[] = [];
+
+  const checkPath = (basePath: string, scope: "project" | "global"): void => {
+    if (!fs.existsSync(basePath)) return;
+
+    try {
+      const entries = fs.readdirSync(basePath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith(".")) {
+          skills.push({
+            name: entry.name,
+            path: path.join(basePath, entry.name),
+            agent,
+            scope,
+          });
+        }
+      }
+    } catch {
+      // Ignore permission errors
+    }
+  };
+
+  // Check project scope
+  if (!options.global) {
+    const projectPath = path.join(process.cwd(), agent.projectPath);
+    checkPath(projectPath, "project");
+  }
+
+  // Check global scope
+  if (!options.projectOnly) {
+    checkPath(agent.globalPath, "global");
+  }
+
+  return skills;
+}
+
+export function getSkillInstallPath(
+  skillName: string,
+  agent: AgentConfig,
+  options: InstallOptions
+): string {
+  const basePath = options.global ? agent.globalPath : path.join(process.cwd(), agent.projectPath);
+  return path.join(basePath, sanitizeName(skillName));
 }
