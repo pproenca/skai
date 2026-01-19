@@ -15,10 +15,10 @@ const S_STEP_SUBMIT = color.green("◇");
 const S_BAR = color.gray("│");
 const S_BAR_END = color.gray("└");
 
-const S_TOGGLE_ON = color.green("●");
-const S_TOGGLE_OFF = color.dim("○");
-const S_TOGGLE_ACTIVE_ON = color.green("◉");
-const S_TOGGLE_ACTIVE_OFF = color.cyan("◎");
+const S_TOGGLE_ON = color.green("◼");
+const S_TOGGLE_OFF = color.dim("◻");
+const S_TOGGLE_ACTIVE_ON = color.green("◼");
+const S_TOGGLE_ACTIVE_OFF = color.cyan("◻");
 
 interface SkillManagerState {
   skills: ManagedSkill[];
@@ -159,10 +159,9 @@ class SkillManagerPrompt extends Prompt {
     // Header row
     const headerName = "SKILL".padEnd(MAX_NAME_WIDTH);
     const headerAgent = "AGENT".padEnd(MAX_AGENT_WIDTH);
-    const headerScope = "SCOPE".padEnd(8);
-    const headerStatus = "STATUS";
+    const headerScope = "SCOPE";
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("   " + headerName + headerAgent + headerScope + headerStatus)}`
+      `${color.cyan(S_BAR)}  ${color.dim("   " + headerName + headerAgent + headerScope)}`
     );
 
     const aboveCount = scrollOffset;
@@ -198,13 +197,12 @@ class SkillManagerPrompt extends Prompt {
       const agent = skill.agent.displayName.length > MAX_AGENT_WIDTH
         ? skill.agent.displayName.slice(0, MAX_AGENT_WIDTH - 2) + ".."
         : skill.agent.displayName.padEnd(MAX_AGENT_WIDTH);
-      const scope = skill.scope.padEnd(8);
-      const status = enabled ? color.green("enabled") : color.dim("disabled");
+      const scope = skill.scope;
       const changedMarker = wasChanged ? color.yellow(" *") : "";
 
       const line = isActive
-        ? `${toggle} ${name}${agent}${scope}${status}${changedMarker}`
-        : `${toggle} ${color.dim(name)}${color.dim(agent)}${color.dim(scope)}${status}${changedMarker}`;
+        ? `${toggle} ${name}${agent}${scope}${changedMarker}`
+        : `${toggle} ${color.dim(name)}${color.dim(agent)}${color.dim(scope)}${changedMarker}`;
 
       lines.push(`${color.cyan(S_BAR)}  ${line}`);
     }
