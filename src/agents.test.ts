@@ -25,7 +25,8 @@ describe('detectInstalledAgents', () => {
   });
 
   it('detects agents by config directory existence', () => {
-    // Only return true for claude-code's config directory
+    // Return true for claude-code's config directory (.claude is the parent of .claude/skills/)
+    // detectInstalledAgents checks the parent of globalPath to determine if the agent is installed
     mockedFs.existsSync.mockImplementation((p) => {
       return String(p).includes('.claude');
     });
@@ -119,15 +120,17 @@ describe('getAgentByName', () => {
     expect(result?.name).toBe('kilo-code');
   });
 
-  it('handles different agent types', () => {
-    expect(getAgentByName('opencode')?.name).toBe('opencode');
-    expect(getAgentByName('codex')?.name).toBe('codex');
-    expect(getAgentByName('cursor')?.name).toBe('cursor');
-    expect(getAgentByName('amp')?.name).toBe('amp');
-    expect(getAgentByName('goose')?.name).toBe('goose');
-    expect(getAgentByName('gemini')?.name).toBe('gemini');
-    expect(getAgentByName('copilot')?.name).toBe('copilot');
-    expect(getAgentByName('windsurf')?.name).toBe('windsurf');
+  it.each([
+    'opencode',
+    'codex',
+    'cursor',
+    'amp',
+    'goose',
+    'gemini',
+    'copilot',
+    'windsurf',
+  ])('handles %s agent type', (agentName) => {
+    expect(getAgentByName(agentName)?.name).toBe(agentName);
   });
 });
 
@@ -149,19 +152,21 @@ describe('getAllAgents', () => {
     }
   });
 
-  it('includes all expected agent types', () => {
+  it.each([
+    'claude-code',
+    'cursor',
+    'opencode',
+    'codex',
+    'amp',
+    'goose',
+    'gemini',
+    'copilot',
+    'windsurf',
+  ])('includes %s agent type', (agentName) => {
     const result = getAllAgents();
     const names = result.map(a => a.name);
 
-    expect(names).toContain('claude-code');
-    expect(names).toContain('cursor');
-    expect(names).toContain('opencode');
-    expect(names).toContain('codex');
-    expect(names).toContain('amp');
-    expect(names).toContain('goose');
-    expect(names).toContain('gemini');
-    expect(names).toContain('copilot');
-    expect(names).toContain('windsurf');
+    expect(names).toContain(agentName);
   });
 });
 

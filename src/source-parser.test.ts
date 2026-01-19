@@ -239,6 +239,14 @@ describe('parseSource', () => {
   });
 
   describe('edge cases', () => {
+    it('handles empty string input', () => {
+      const result = parseSource('');
+
+      // Empty string should fall through to git type as a fallback
+      expect(result.type).toBe('git');
+      expect(result.url).toBe('.git');
+    });
+
     it('handles mixed case owner/repo', () => {
       const result = parseSource('MyOrg/MyRepo');
 

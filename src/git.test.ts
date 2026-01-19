@@ -3,6 +3,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { cloneRepo, cleanupTempDir } from './git.js';
 
+// Test constants
+const MOCK_TEMP_PATH = '/tmp/skai-abc123';
+
+// Hoist mock to make it available in vi.mock factory
+const { mockClone } = vi.hoisted(() => ({
+  mockClone: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock modules
 vi.mock('node:fs');
 vi.mock('node:os', async (importOriginal) => {
@@ -14,7 +22,7 @@ vi.mock('node:os', async (importOriginal) => {
 });
 vi.mock('simple-git', () => ({
   simpleGit: () => ({
-    clone: vi.fn().mockResolvedValue(undefined),
+    clone: mockClone,
   }),
 }));
 
@@ -24,8 +32,9 @@ const mockedOs = vi.mocked(os);
 describe('cloneRepo', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockClone.mockResolvedValue(undefined);
     mockedOs.tmpdir.mockReturnValue('/tmp');
-    mockedFs.mkdtempSync.mockReturnValue('/tmp/skai-abc123');
+    mockedFs.mkdtempSync.mockReturnValue(MOCK_TEMP_PATH);
   });
 
   afterEach(() => {
@@ -43,15 +52,17 @@ describe('cloneRepo', () => {
   it('returns temp directory path', async () => {
     const result = await cloneRepo('https://github.com/owner/repo.git');
 
-    expect(result).toBe('/tmp/skai-abc123');
+    expect(result).toBe(MOCK_TEMP_PATH);
   });
 
   it('uses shallow clone (depth 1)', async () => {
-    // We can verify this through the mock if we enhance it
-    // For now, we just verify the function completes
-    const result = await cloneRepo('https://github.com/owner/repo.git');
+    await cloneRepo('https://github.com/owner/repo.git');
 
-    expect(result).toBeDefined();
+    expect(mockClone).toHaveBeenCalledWith(
+      'https://github.com/owner/repo.git',
+      MOCK_TEMP_PATH,
+      ['--depth', '1']
+    );
   });
 });
 
@@ -68,10 +79,10 @@ describe('cleanupTempDir', () => {
   });
 
   it('removes directory within system temp', () => {
-    cleanupTempDir('/tmp/skai-abc123');
+    cleanupTempDir(MOCK_TEMP_PATH);
 
     expect(mockedFs.rmSync).toHaveBeenCalledWith(
-      '/tmp/skai-abc123',
+      MOCK_TEMP_PATH,
       { recursive: true, force: true }
     );
   });
@@ -94,7 +105,7 @@ describe('cleanupTempDir', () => {
     mockedFs.existsSync.mockReturnValue(false);
 
     // Should not throw
-    cleanupTempDir('/tmp/skai-abc123');
+    cleanupTempDir(MOCK_TEMP_PATH);
 
     // rmSync should not be called since directory doesn't exist
     expect(mockedFs.rmSync).not.toHaveBeenCalled();

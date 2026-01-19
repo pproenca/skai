@@ -83,6 +83,39 @@ const S_CHECKBOX_ACTIVE = color.cyan("◻");
 const S_CHECKBOX_SELECTED = color.green("◼");
 const S_CHECKBOX_INACTIVE = color.dim("◻");
 
+const MAX_HINT_LENGTH = 60;
+
+function truncateHint(hint: string | undefined, maxLen: number): string {
+  if (!hint) return "";
+  if (hint.length <= maxLen) return hint;
+  return hint.slice(0, maxLen - 1) + "…";
+}
+
+function wrapText(text: string, maxWidth: number): string[] {
+  if (!text) return [];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    if (currentLine.length === 0) {
+      currentLine = word;
+    } else if (currentLine.length + 1 + word.length <= maxWidth) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+const DESCRIPTION_INDENT = "       ";
+const DESCRIPTION_MAX_WIDTH = 60;
+
 interface SearchableOption<T> {
   option: SkillOption;
   searchableText: string;
@@ -265,14 +298,20 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       return lines.join("\n");
     }
 
+    const selectedCount = this.selectedValues.size;
     const countText =
       this.searchTerm || filtered !== total
         ? `(${filtered} of ${total} skills)`
         : `(${total} skills)`;
+    const selectedText =
+      selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     const cursor = this.state === "active" ? color.inverse(" ") : "_";
     lines.push(
-      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}`
+      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
+    );
+    lines.push(
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
     );
     lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(40))}`);
 
@@ -319,15 +358,27 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
           ? highlightMatch(opt.option.label, this.searchTerm)
           : opt.option.label;
 
-        const hint = opt.option.hint
-          ? color.dim(` (${opt.option.hint})`)
-          : "";
+        const fullHint = opt.option.hint || "";
+        const needsTruncation = fullHint.length > MAX_HINT_LENGTH;
+        const displayHint = needsTruncation
+          ? truncateHint(fullHint, MAX_HINT_LENGTH)
+          : fullHint;
+        const hint = displayHint ? color.dim(` (${displayHint})`) : "";
 
         const line = isActive
           ? `${checkbox} ${label}${hint}`
           : `${checkbox} ${color.dim(opt.option.label)}${color.dim(hint)}`;
 
         lines.push(`${color.cyan(S_BAR)}  ${line}`);
+
+        if (isActive && needsTruncation) {
+          const wrappedLines = wrapText(fullHint, DESCRIPTION_MAX_WIDTH);
+          for (const descLine of wrappedLines) {
+            lines.push(
+              `${color.cyan(S_BAR)}  ${DESCRIPTION_INDENT}${color.dim(descLine)}`
+            );
+          }
+        }
       }
 
       if (belowCount > 0) {
@@ -580,14 +631,20 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       return lines.join("\n");
     }
 
+    const selectedCount = this.selectedValues.size;
     const countText =
       this.searchTerm || filtered !== total
         ? `(${filtered} of ${total} skills)`
         : `(${total} skills)`;
+    const selectedText =
+      selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     const cursor = this.state === "active" ? color.inverse(" ") : "_";
     lines.push(
-      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}`
+      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
+    );
+    lines.push(
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
     );
     lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(40))}`);
 
@@ -619,6 +676,10 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
         const isActive = globalIndex === this.listCursor;
 
         if (item.type === "group") {
+          const groupOptions = this.getGroupOptions(item.name);
+          const groupSelectedCount = groupOptions.filter((opt) =>
+            this.selectedValues.has(opt.value)
+          ).length;
           const groupSelected = this.isGroupSelected(item.name);
           const checkbox = groupSelected
             ? S_CHECKBOX_SELECTED
@@ -628,9 +689,13 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
           const label = this.searchTerm
             ? highlightMatch(item.name, this.searchTerm)
             : item.name;
+          const countHint =
+            groupSelectedCount > 0
+              ? color.dim(` (${groupSelectedCount}/${groupOptions.length})`)
+              : color.dim(` (${groupOptions.length})`);
           const line = isActive
-            ? `${checkbox} ${label}`
-            : `${checkbox} ${color.dim(item.name)}`;
+            ? `${checkbox} ${color.bold(label)}${countHint}`
+            : `${checkbox} ${color.dim(item.name)}${countHint}`;
           lines.push(`${color.cyan(S_BAR)}  ${line}`);
         } else {
           const isSelected = this.selectedValues.has(item.option.value);
@@ -646,9 +711,12 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
           const label = this.searchTerm
             ? highlightMatch(item.option.option.label, this.searchTerm)
             : item.option.option.label;
-          const hint = item.option.option.hint
-            ? color.dim(` (${item.option.option.hint})`)
-            : "";
+          const fullHint = item.option.option.hint || "";
+          const needsTruncation = fullHint.length > MAX_HINT_LENGTH;
+          const displayHint = needsTruncation
+            ? truncateHint(fullHint, MAX_HINT_LENGTH)
+            : fullHint;
+          const hint = displayHint ? color.dim(` (${displayHint})`) : "";
 
           const isLastInGroup =
             i + 1 >= visibleItems.length ||
@@ -662,6 +730,16 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             : `${indent}${checkbox} ${color.dim(item.option.option.label)}${color.dim(hint)}`;
 
           lines.push(`${color.cyan(S_BAR)}  ${line}`);
+
+          if (isActive && needsTruncation) {
+            const descIndent = isLastInGroup ? "  " : `${color.gray("│")} `;
+            const wrappedLines = wrapText(fullHint, DESCRIPTION_MAX_WIDTH);
+            for (const descLine of wrappedLines) {
+              lines.push(
+                `${color.cyan(S_BAR)}  ${descIndent}${DESCRIPTION_INDENT}${color.dim(descLine)}`
+              );
+            }
+          }
         }
       }
 

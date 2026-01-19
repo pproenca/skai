@@ -173,26 +173,12 @@ describe("detectPackageManager", () => {
 });
 
 describe("isValidPackageManager", () => {
-  it("validates npm", () => {
-    expect(isValidPackageManager("npm")).toBe(true);
+  it.each(["npm", "pnpm", "yarn", "bun"])("validates %s", (pm) => {
+    expect(isValidPackageManager(pm)).toBe(true);
   });
 
-  it("validates pnpm", () => {
-    expect(isValidPackageManager("pnpm")).toBe(true);
-  });
-
-  it("validates yarn", () => {
-    expect(isValidPackageManager("yarn")).toBe(true);
-  });
-
-  it("validates bun", () => {
-    expect(isValidPackageManager("bun")).toBe(true);
-  });
-
-  it("rejects invalid values", () => {
-    expect(isValidPackageManager("invalid")).toBe(false);
-    expect(isValidPackageManager("cargo")).toBe(false);
-    expect(isValidPackageManager("pip")).toBe(false);
+  it.each(["invalid", "cargo", "pip"])("rejects %s", (pm) => {
+    expect(isValidPackageManager(pm)).toBe(false);
   });
 });
 
