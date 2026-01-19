@@ -29,6 +29,7 @@ import {
   getSkillInstallPath,
 } from './installer.js';
 import { treeSelect } from './tree-select.js';
+import { manageSkills } from './skill-manager.js';
 import {
   extractDependencies,
   detectPackageManager,
@@ -205,13 +206,8 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
   clack.intro(chalk.cyan('skai - AI Agent Skills Package Manager'));
 
   if (!source) {
+    // This shouldn't be reached as the action handler redirects to runManage
     clack.log.error('Please provide a source (GitHub repo, URL, or local path)');
-    clack.log.info('Usage: skai <source> [options]');
-    clack.log.info('');
-    clack.log.info('Examples:');
-    clack.log.info('  skai pproenca/dot-skills');
-    clack.log.info('  skai https://github.com/org/repo');
-    clack.log.info('  skai ./local/skills');
     clack.outro(chalk.red('No source provided'));
     process.exit(EXIT_ERROR);
   }
@@ -983,6 +979,44 @@ async function runUpdate(_skillNames: string[], _options: UpdateOptions): Promis
   clack.outro(chalk.yellow('Update not yet implemented'));
 }
 
+async function runManage(): Promise<void> {
+  // Check if stdin supports raw mode (required for interactive input)
+  if (!process.stdin.isTTY) {
+    clack.log.error('Interactive mode requires a TTY.');
+    clack.log.info('Use "skai list" to view installed skills.');
+    process.exit(EXIT_ERROR);
+  }
+
+  clack.intro(chalk.cyan('skai - Skill Manager'));
+
+  const result = await manageSkills();
+
+  if (result === null) {
+    clack.outro(chalk.yellow('Cancelled'));
+    return;
+  }
+
+  if (result.enabled === 0 && result.disabled === 0 && result.failed === 0) {
+    clack.outro(chalk.dim('No changes made'));
+    return;
+  }
+
+  const parts: string[] = [];
+  if (result.enabled > 0) parts.push(chalk.green(`${result.enabled} enabled`));
+  if (result.disabled > 0) parts.push(chalk.yellow(`${result.disabled} disabled`));
+  if (result.failed > 0) parts.push(chalk.red(`${result.failed} failed`));
+
+  for (const err of result.errors) {
+    clack.log.warn(`Failed to update ${err.skill} (${err.agent}): ${err.error}`);
+  }
+
+  if (result.enabled > 0 || result.disabled > 0) {
+    clack.note('Restart your AI agent to apply changes.', 'Next steps');
+  }
+
+  clack.outro(parts.join(', '));
+}
+
 async function main(): Promise<void> {
   const program = new Command();
 
@@ -992,6 +1026,7 @@ async function main(): Promise<void> {
     .version(getVersion(), '-V, --version', 'Display version');
 
   // Default command (install) - handles: skai <source>
+  // When no source is provided, opens the skill manager UI
   program
     .argument('[source]', 'GitHub repo, URL, or local path to install skills from')
     .option('-g, --global', 'Install to user directory instead of project', false)
@@ -1002,6 +1037,11 @@ async function main(): Promise<void> {
     .option('--json', 'Output results in JSON format', false)
     .option('--dry-run', 'Preview installation without making changes', false)
     .action(async (source: string | undefined, options: InstallOptions) => {
+      if (!source) {
+        // No source provided - open skill manager
+        await runManage();
+        return;
+      }
       await runInstall(source, options);
     });
 
@@ -1059,6 +1099,14 @@ async function main(): Promise<void> {
       await runUpdate(skills, options);
     });
 
+  // Manage command - handles: skai manage
+  program
+    .command('manage')
+    .description('Interactively enable/disable installed skills')
+    .action(async () => {
+      await runManage();
+    });
+
   // Add examples to help
   program.addHelpText(
     'after',
@@ -1090,6 +1138,10 @@ ${chalk.yellow('EXAMPLES')}
 
   ${chalk.dim('# Uninstall from specific agent')}
   $ skai uninstall typescript -a cursor
+
+  ${chalk.dim('# Manage skills (enable/disable)')}
+  $ skai
+  $ skai manage
 
 ${chalk.yellow('SUPPORTED AGENTS')}
   claude-code, cursor, copilot, windsurf, codex, opencode, amp,

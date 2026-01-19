@@ -205,3 +205,117 @@ export function getSkillInstallPath(
   const basePath = options.global ? agent.globalPath : path.join(process.cwd(), agent.projectPath);
   return path.join(basePath, sanitizeName(skillName));
 }
+
+const DISABLED_SUFFIX = ".disabled";
+
+export interface ManagedSkill {
+  name: string;
+  path: string;
+  agent: AgentConfig;
+  scope: "project" | "global";
+  enabled: boolean;
+}
+
+export function listManagedSkills(
+  agent: AgentConfig,
+  options: { global?: boolean; projectOnly?: boolean } = {}
+): ManagedSkill[] {
+  const skills: ManagedSkill[] = [];
+
+  const checkPath = (basePath: string, scope: "project" | "global"): void => {
+    if (!fs.existsSync(basePath)) return;
+
+    try {
+      const entries = fs.readdirSync(basePath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith(".")) {
+          const isDisabled = entry.name.endsWith(DISABLED_SUFFIX);
+          const name = isDisabled
+            ? entry.name.slice(0, -DISABLED_SUFFIX.length)
+            : entry.name;
+
+          skills.push({
+            name,
+            path: path.join(basePath, entry.name),
+            agent,
+            scope,
+            enabled: !isDisabled,
+          });
+        }
+      }
+    } catch {
+      // Ignore permission errors
+    }
+  };
+
+  // Check project scope
+  if (!options.global) {
+    const projectPath = path.join(process.cwd(), agent.projectPath);
+    checkPath(projectPath, "project");
+  }
+
+  // Check global scope
+  if (!options.projectOnly) {
+    checkPath(agent.globalPath, "global");
+  }
+
+  return skills;
+}
+
+export interface ToggleResult {
+  skillName: string;
+  agent: AgentConfig;
+  success: boolean;
+  enabled: boolean;
+  error?: string;
+}
+
+export function toggleSkill(skill: ManagedSkill): ToggleResult {
+  const currentPath = skill.path;
+  const basePath = path.dirname(currentPath);
+  const currentName = path.basename(currentPath);
+
+  let newName: string;
+  let newEnabled: boolean;
+
+  if (skill.enabled) {
+    // Disable: add .disabled suffix
+    newName = currentName + DISABLED_SUFFIX;
+    newEnabled = false;
+  } else {
+    // Enable: remove .disabled suffix
+    newName = currentName.slice(0, -DISABLED_SUFFIX.length);
+    newEnabled = true;
+  }
+
+  const newPath = path.join(basePath, newName);
+
+  // Security: Validate paths
+  if (!isPathSafe(newPath, basePath)) {
+    return {
+      skillName: skill.name,
+      agent: skill.agent,
+      success: false,
+      enabled: skill.enabled,
+      error: "Invalid skill path",
+    };
+  }
+
+  try {
+    fs.renameSync(currentPath, newPath);
+    return {
+      skillName: skill.name,
+      agent: skill.agent,
+      success: true,
+      enabled: newEnabled,
+    };
+  } catch (error) {
+    return {
+      skillName: skill.name,
+      agent: skill.agent,
+      success: false,
+      enabled: skill.enabled,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
