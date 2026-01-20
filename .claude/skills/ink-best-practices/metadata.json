@@ -3,6 +3,7 @@
   "organization": "Community",
   "technology": "Ink",
   "date": "January 2026",
+  "category": "CLI",
   "abstract": "Comprehensive performance optimization guide for Ink CLI applications, designed for AI agents and LLMs. Contains 42 rules across 8 categories, prioritized by impact from critical (render optimization, static content) to incremental (text styling). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations, and specific impact metrics to guide automated refactoring and code generation.",
   "references": [
     "https://github.com/vadimdemedes/ink",

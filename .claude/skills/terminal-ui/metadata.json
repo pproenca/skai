@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "organization": "Community",
+  "technology": "Terminal UI (Ink + Clack)",
+  "date": "January 2026",
+  "category": "CLI",
+  "abstract": "Comprehensive developer experience guide for building TypeScript terminal user interfaces using Ink and Clack prompts. Contains 42 rules across 8 categories, prioritized by impact to guide automated refactoring and code generation.",
+  "references": [
+    "https://github.com/vadimdemedes/ink",
+    "https://github.com/natemoo-re/clack"
+  ]
+}

@@ -38,9 +38,9 @@ export function renderTabBar(options: TabBarOptions): string[] {
     }
 
     if (isActive) {
-      tabParts.push(color.bold(color.cyan(label)));
+      tabParts.push(color.bgCyan(color.black(` ${label} `)));
     } else {
-      tabParts.push(color.dim(label));
+      tabParts.push(` ${color.dim(label)} `);
     }
   }
 

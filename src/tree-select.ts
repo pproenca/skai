@@ -566,12 +566,6 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       return lines.join("\n");
     }
 
-    // Render tab bar
-    const tabBarLines = this.tabNav.renderTabBar();
-    for (const line of tabBarLines) {
-      lines.push(`${color.cyan(S_BAR)}  ${line}`);
-    }
-
     const selectedCount = this.selectedValues.size;
     const countText =
       this.searchTerm || filtered !== total
@@ -587,7 +581,12 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     lines.push(
       `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
     );
-    lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(50))}`);
+
+    // Render tab bar (includes its own separator line)
+    const tabBarLines = this.tabNav.renderTabBar();
+    for (const line of tabBarLines) {
+      lines.push(`${color.cyan(S_BAR)}  ${line}`);
+    }
 
     if (filteredItems.length === 0) {
       lines.push(
@@ -630,9 +629,6 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
         }
 
         const hint = item.option.hint || "";
-        const groupHint = this.tabNav.getActiveTab().id === "all"
-          ? color.dim(`[${item.group}] `)
-          : "";
 
         // Pad label to align summaries in a clean column
         const paddedLabel = item.option.label.padEnd(MAX_LABEL_WIDTH);
@@ -641,8 +637,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
           : paddedLabel;
 
         const line = isActive
-          ? `${checkbox} ${groupHint}${highlightedPaddedLabel} ${color.dim(hint)}`
-          : `${checkbox} ${groupHint}${color.dim(paddedLabel)} ${color.dim(hint)}`;
+          ? `${checkbox} ${highlightedPaddedLabel} ${color.dim(hint)}`
+          : `${checkbox} ${color.dim(paddedLabel)} ${color.dim(hint)}`;
 
         lines.push(`${color.cyan(S_BAR)}  ${line}`);
       }
