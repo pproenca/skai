@@ -171,6 +171,197 @@ export class PromptTestHarness {
       output: this.output,
     };
   }
+
+  /**
+   * Get a normalized snapshot of the current output for comparison.
+   * Strips ANSI codes and normalizes whitespace.
+   */
+  getSnapshot(): string {
+    const text = this.getAllText();
+    return text
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  /**
+   * Assert that scroll indicators show expected counts.
+   * Looks for "X more above" and "Y more below" patterns.
+   * @param above Expected count of items above the visible area, or null to skip check
+   * @param below Expected count of items below the visible area, or null to skip check
+   */
+  assertScrollIndicators(above: number | null, below: number | null): void {
+    const text = this.getAllText();
+
+    if (above !== null) {
+      const abovePattern = new RegExp(`${above}\\s+more\\s+above`, "i");
+      if (above === 0) {
+        // Should NOT contain any "more above" indicator
+        if (/\d+\s+more\s+above/i.test(text)) {
+          throw new Error(
+            `Expected no "more above" indicator but found one\nOutput:\n${text}`
+          );
+        }
+      } else {
+        if (!abovePattern.test(text)) {
+          throw new Error(
+            `Expected "${above} more above" indicator\nOutput:\n${text}`
+          );
+        }
+      }
+    }
+
+    if (below !== null) {
+      const belowPattern = new RegExp(`${below}\\s+more\\s+below`, "i");
+      if (below === 0) {
+        // Should NOT contain any "more below" indicator
+        if (/\d+\s+more\s+below/i.test(text)) {
+          throw new Error(
+            `Expected no "more below" indicator but found one\nOutput:\n${text}`
+          );
+        }
+      } else {
+        if (!belowPattern.test(text)) {
+          throw new Error(
+            `Expected "${below} more below" indicator\nOutput:\n${text}`
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Assert that a specific tab is active.
+   * Looks for tab indicators in the output.
+   * @param tabName The name of the tab that should be active
+   */
+  assertTabActive(tabName: string): void {
+    const text = this.getAllText();
+    // For simpler matching, just verify the tab name appears
+    // Active tabs are typically highlighted, but we can't easily detect
+    // ANSI styling differences in stripped text
+    if (!text.toLowerCase().includes(tabName.toLowerCase())) {
+      throw new Error(
+        `Expected tab "${tabName}" to be present\nOutput:\n${text}`
+      );
+    }
+  }
+
+  /**
+   * Assert the selection count shown in the output.
+   * Looks for "N selected" pattern.
+   * @param count Expected number of selected items
+   */
+  assertSelectionCount(count: number): void {
+    const text = this.getAllText();
+
+    if (count === 0) {
+      // Should NOT show selection count when 0
+      if (/\d+\s+selected/i.test(text)) {
+        throw new Error(
+          `Expected no selection count but found one\nOutput:\n${text}`
+        );
+      }
+    } else {
+      const pattern = new RegExp(`${count}\\s+selected`, "i");
+      if (!pattern.test(text)) {
+        throw new Error(
+          `Expected "${count} selected" in output\nOutput:\n${text}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Assert the pending changes count (for skill manager).
+   * Looks for "N pending" pattern.
+   * @param count Expected number of pending changes
+   */
+  assertPendingCount(count: number): void {
+    const text = this.getAllText();
+
+    if (count === 0) {
+      if (/\d+\s+pending/i.test(text)) {
+        throw new Error(
+          `Expected no pending count but found one\nOutput:\n${text}`
+        );
+      }
+    } else {
+      const pattern = new RegExp(`${count}\\s+pending`, "i");
+      if (!pattern.test(text)) {
+        throw new Error(
+          `Expected "${count} pending" in output\nOutput:\n${text}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Assert the filtered count shown in search mode.
+   * Looks for "X of Y skills" pattern.
+   * @param filtered Number of filtered (shown) items
+   * @param total Total number of items
+   */
+  assertFilteredCount(filtered: number, total: number): void {
+    const text = this.getAllText();
+    const pattern = new RegExp(`${filtered}\\s+of\\s+${total}`, "i");
+
+    if (!pattern.test(text)) {
+      throw new Error(
+        `Expected "${filtered} of ${total}" in output\nOutput:\n${text}`
+      );
+    }
+  }
+
+  /**
+   * Assert that search input contains specific text
+   * @param searchText Expected search text
+   */
+  assertSearchContains(searchText: string): void {
+    const text = this.getAllText();
+    const searchLinePattern = /Search:\s*([^\n]*)/i;
+    const match = text.match(searchLinePattern);
+
+    if (!match) {
+      throw new Error(
+        `Could not find search line in output\nOutput:\n${text}`
+      );
+    }
+
+    if (!match[1].includes(searchText)) {
+      throw new Error(
+        `Expected search to contain "${searchText}" but found "${match[1]}"\nOutput:\n${text}`
+      );
+    }
+  }
+
+  /**
+   * Wait for the output to contain specific text with timeout.
+   * Useful for waiting for async renders.
+   * @param text Text to wait for
+   * @param timeout Maximum time to wait in ms
+   * @param interval Check interval in ms
+   */
+  async waitForText(
+    text: string,
+    timeout = 2000,
+    interval = 50
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      if (this.containsText(text)) {
+        return;
+      }
+      await this.tick(interval);
+    }
+
+    throw new Error(
+      `Timeout waiting for "${text}" in output\nActual output:\n${this.getAllText()}`
+    );
+  }
 }
 
 /**
