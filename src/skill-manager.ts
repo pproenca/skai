@@ -6,41 +6,23 @@ import { listManagedSkills, toggleSkill } from "./installer.js";
 import { detectInstalledAgents, getAllAgents } from "./agents.js";
 import { TabNavigation } from "./tabbed-prompt.js";
 import { createCategoryTabs, extractCategories } from "./tab-bar.js";
-
-const MAX_VISIBLE_ITEMS = 12;
-const MAX_NAME_WIDTH = 25;
-const MAX_AGENT_WIDTH = 14;
-
-const S_STEP_ACTIVE = color.green("◆");
-const S_STEP_CANCEL = color.red("■");
-const S_STEP_SUBMIT = color.green("◇");
-const S_BAR = color.gray("│");
-const S_BAR_END = color.gray("└");
-
-// Toggle states with color coding per plan spec
-const S_TOGGLE_ENABLED = color.green("◼"); // Currently enabled
-const S_TOGGLE_DISABLED = color.dim("◻"); // Currently disabled
-const S_TOGGLE_PENDING_DISABLE = color.red("◻"); // User unchecked enabled skill
-const S_TOGGLE_PENDING_ENABLE = color.green("◼"); // User checked disabled skill
-const S_TOGGLE_ACTIVE = color.cyan("◻"); // Active cursor on disabled
-const S_TOGGLE_ACTIVE_ENABLED = color.green("◼"); // Active cursor on enabled
+import {
+  SPACING,
+  LAYOUT,
+  S_BAR,
+  S_BAR_END,
+  S_TOGGLE_ENABLED,
+  S_TOGGLE_DISABLED,
+  S_TOGGLE_PENDING_DISABLE,
+  S_TOGGLE_PENDING_ENABLE,
+  S_TOGGLE_ACTIVE,
+  S_TOGGLE_ACTIVE_ENABLED,
+  symbol,
+} from "./ui-constants.js";
 
 interface SkillManagerState {
   skills: ManagedSkill[];
   changes: Map<string, boolean>; // skill path -> new enabled state
-}
-
-function symbol(state: string): string {
-  switch (state) {
-    case "active":
-      return S_STEP_ACTIVE;
-    case "cancel":
-      return S_STEP_CANCEL;
-    case "submit":
-      return S_STEP_SUBMIT;
-    default:
-      return color.cyan("◆");
-  }
 }
 
 function getSkillKey(skill: ManagedSkill): string {
@@ -65,8 +47,8 @@ class SkillManagerPrompt extends Prompt {
 
     this.tabNav = new TabNavigation({
       tabs,
-      maxVisibleItems: MAX_VISIBLE_ITEMS,
-      tabBarWidth: 50,
+      maxVisibleItems: LAYOUT.MAX_VISIBLE_ITEMS,
+      tabBarWidth: LAYOUT.TAB_BAR_WIDTH,
     });
 
     this.state_data = {
@@ -223,8 +205,8 @@ class SkillManagerPrompt extends Prompt {
     lines.push(`${color.cyan(S_BAR)}`);
 
     // Header row - removed STATUS column
-    const headerName = "SKILL".padEnd(MAX_NAME_WIDTH);
-    const headerAgent = "AGENT".padEnd(MAX_AGENT_WIDTH);
+    const headerName = "SKILL".padEnd(LAYOUT.NAME_WIDTH);
+    const headerAgent = "AGENT".padEnd(LAYOUT.AGENT_WIDTH);
     const headerScope = "SCOPE";
     lines.push(
       `${color.cyan(S_BAR)}  ${color.dim("   " + headerName + headerAgent + headerScope)}`
@@ -251,12 +233,12 @@ class SkillManagerPrompt extends Prompt {
 
       const toggle = this.getToggleSymbol(skill, isActive);
 
-      const name = skill.name.length > MAX_NAME_WIDTH
-        ? skill.name.slice(0, MAX_NAME_WIDTH - 2) + ".."
-        : skill.name.padEnd(MAX_NAME_WIDTH);
-      const agent = skill.agent.displayName.length > MAX_AGENT_WIDTH
-        ? skill.agent.displayName.slice(0, MAX_AGENT_WIDTH - 2) + ".."
-        : skill.agent.displayName.padEnd(MAX_AGENT_WIDTH);
+      const name = skill.name.length > LAYOUT.NAME_WIDTH
+        ? skill.name.slice(0, LAYOUT.NAME_WIDTH - 2) + ".."
+        : skill.name.padEnd(LAYOUT.NAME_WIDTH);
+      const agent = skill.agent.displayName.length > LAYOUT.AGENT_WIDTH
+        ? skill.agent.displayName.slice(0, LAYOUT.AGENT_WIDTH - 2) + ".."
+        : skill.agent.displayName.padEnd(LAYOUT.AGENT_WIDTH);
       const scope = skill.scope;
       const changedMarker = wasChanged ? color.yellow(" *") : "";
 

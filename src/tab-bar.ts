@@ -1,7 +1,6 @@
 import color from "picocolors";
 import type { Tab } from "./types.js";
-
-const DEFAULT_WIDTH = 60;
+import { LAYOUT } from "./ui-constants.js";
 const OVERFLOW_LEFT = "‹ ";
 const OVERFLOW_RIGHT = " ›";
 
@@ -115,7 +114,7 @@ function calculateVisibleTabs(
  * ──────────────────────────────────────────────────────────
  */
 export function renderTabBar(options: TabBarOptions): string[] {
-  const { tabs, activeIndex, width = DEFAULT_WIDTH } = options;
+  const { tabs, activeIndex, width = LAYOUT.TAB_BAR_WIDTH } = options;
 
   if (tabs.length === 0) {
     return [];

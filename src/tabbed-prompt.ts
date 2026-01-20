@@ -1,5 +1,6 @@
 import type { Tab, TabContentState } from "./types.js";
 import { renderTabBar, navigateLeft, navigateRight } from "./tab-bar.js";
+import { LAYOUT } from "./ui-constants.js";
 
 export type CursorAction =
   | "up"
@@ -31,8 +32,8 @@ export class TabNavigation {
   constructor(options: TabbedPromptOptions) {
     this.tabs = options.tabs;
     this.activeTabIndex = options.initialTabIndex ?? 0;
-    this.maxVisibleItems = options.maxVisibleItems ?? 10;
-    this.tabBarWidth = options.tabBarWidth ?? 50;
+    this.maxVisibleItems = options.maxVisibleItems ?? LAYOUT.MAX_VISIBLE_ITEMS;
+    this.tabBarWidth = options.tabBarWidth ?? LAYOUT.TAB_BAR_WIDTH;
 
     // Initialize per-tab state
     this.tabStates = new Map();
@@ -125,7 +126,6 @@ export class TabNavigation {
       tabs: this.tabs,
       activeIndex: this.activeTabIndex,
       width: this.tabBarWidth,
-      showHint: true,
     });
   }
 }

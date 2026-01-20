@@ -4,6 +4,16 @@ import color from "picocolors";
 import type { Skill, TreeNode } from "./types.js";
 import { TabNavigation } from "./tabbed-prompt.js";
 import { createCategoryTabs } from "./tab-bar.js";
+import {
+  LAYOUT,
+  S_BAR,
+  S_BAR_END,
+  S_CHECKBOX_ACTIVE,
+  S_CHECKBOX_SELECTED,
+  S_CHECKBOX_INACTIVE,
+  symbol,
+  createSeparator,
+} from "./ui-constants.js";
 
 export interface FlatNode {
   node: TreeNode;
@@ -74,18 +84,6 @@ export function getAllSkillIds(node: TreeNode): string[] {
 type SkillOption = { value: Skill; label: string; hint?: string };
 
 const SEARCH_THRESHOLD = 5;
-const MAX_VISIBLE_ITEMS = 10;
-
-const S_STEP_ACTIVE = color.green("◆");
-const S_STEP_CANCEL = color.red("■");
-const S_STEP_SUBMIT = color.green("◇");
-const S_BAR = color.gray("│");
-const S_BAR_END = color.gray("└");
-const S_CHECKBOX_ACTIVE = color.cyan("◻");
-const S_CHECKBOX_SELECTED = color.green("◼");
-const S_CHECKBOX_INACTIVE = color.dim("◻");
-
-const MAX_LABEL_WIDTH = 30;
 
 interface SearchableOption<T> {
   option: SkillOption;
@@ -130,19 +128,6 @@ function highlightMatch(text: string, searchTerm: string): string {
   return `${before}${color.cyan(match)}${after}`;
 }
 
-function symbol(state: string): string {
-  switch (state) {
-    case "active":
-      return S_STEP_ACTIVE;
-    case "cancel":
-      return S_STEP_CANCEL;
-    case "submit":
-      return S_STEP_SUBMIT;
-    default:
-      return color.cyan("◆");
-  }
-}
-
 interface SearchableMultiSelectOptions<T> {
   message: string;
   options: SearchableOption<T>[];
@@ -170,7 +155,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     this.allOptions = opts.options;
     this.filteredOptions = [...opts.options];
     this.selectedValues = new Set(opts.initialValues ?? []);
-    this.maxItems = opts.maxItems ?? MAX_VISIBLE_ITEMS;
+    this.maxItems = opts.maxItems ?? LAYOUT.MAX_VISIBLE_ITEMS;
     this.promptMessage = opts.message;
 
     this.on("key", (key) => this.handleKey(key ?? ""));
@@ -295,7 +280,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     lines.push(
       `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
     );
-    lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(40))}`);
+    lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
     if (this.filteredOptions.length === 0) {
       lines.push(
@@ -339,10 +324,10 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
         const hint = opt.option.hint || "";
 
         // Truncate and pad label to align summaries in a clean column
-        const truncatedLabel = opt.option.label.length > MAX_LABEL_WIDTH
-          ? opt.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+        const truncatedLabel = opt.option.label.length > LAYOUT.LABEL_WIDTH
+          ? opt.option.label.slice(0, LAYOUT.LABEL_WIDTH - 1) + "…"
           : opt.option.label;
-        const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
+        const paddedLabel = truncatedLabel.padEnd(LAYOUT.LABEL_WIDTH);
         const highlightedPaddedLabel = this.searchTerm
           ? highlightMatch(paddedLabel, this.searchTerm)
           : paddedLabel;
@@ -446,8 +431,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     this.tabNav = new TabNavigation({
       tabs,
-      maxVisibleItems: opts.maxItems ?? MAX_VISIBLE_ITEMS,
-      tabBarWidth: 50,
+      maxVisibleItems: opts.maxItems ?? LAYOUT.MAX_VISIBLE_ITEMS,
+      tabBarWidth: LAYOUT.TAB_BAR_WIDTH,
     });
 
     this.on("key", (key) => this.handleKey(key ?? ""));
@@ -637,10 +622,10 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
         const hint = item.option.hint || "";
 
         // Truncate and pad label to align summaries in a clean column
-        const truncatedLabel = item.option.label.length > MAX_LABEL_WIDTH
-          ? item.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+        const truncatedLabel = item.option.label.length > LAYOUT.LABEL_WIDTH
+          ? item.option.label.slice(0, LAYOUT.LABEL_WIDTH - 1) + "…"
           : item.option.label;
-        const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
+        const paddedLabel = truncatedLabel.padEnd(LAYOUT.LABEL_WIDTH);
         const highlightedPaddedLabel = this.searchTerm
           ? highlightMatch(paddedLabel, this.searchTerm)
           : paddedLabel;
@@ -705,7 +690,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       opts.groups
     ) as GroupedSearchableOptions<T>[];
     this.selectedValues = new Set(opts.initialValues ?? []);
-    this.maxItems = opts.maxItems ?? MAX_VISIBLE_ITEMS;
+    this.maxItems = opts.maxItems ?? LAYOUT.MAX_VISIBLE_ITEMS;
     this.promptMessage = opts.message;
     this.rebuildFlatItems();
 
@@ -894,7 +879,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
     lines.push(
       `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
     );
-    lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(40))}`);
+    lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
     if (this.flatItems.length === 0) {
       lines.push(
@@ -966,10 +951,10 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             : `${color.gray("│")} `;
 
           // Truncate and pad label to align summaries in a clean column
-          const truncatedLabel = item.option.option.label.length > MAX_LABEL_WIDTH
-            ? item.option.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+          const truncatedLabel = item.option.option.label.length > LAYOUT.LABEL_WIDTH
+            ? item.option.option.label.slice(0, LAYOUT.LABEL_WIDTH - 1) + "…"
             : item.option.option.label;
-          const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
+          const paddedLabel = truncatedLabel.padEnd(LAYOUT.LABEL_WIDTH);
           const highlightedPaddedLabel = this.searchTerm
             ? highlightMatch(paddedLabel, this.searchTerm)
             : paddedLabel;
