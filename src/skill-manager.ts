@@ -97,6 +97,11 @@ class SkillManagerPrompt extends Prompt {
       case "space":
         this.toggleCurrent();
         break;
+      case "cancel":
+        // Cancel the prompt
+        this.state = "cancel";
+        this.close();
+        break;
     }
   }
 
@@ -205,7 +210,7 @@ class SkillManagerPrompt extends Prompt {
       : "";
 
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space toggle • enter apply")}${changeText}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • ←/→/tab switch • space toggle • Esc cancel • enter apply")}${changeText}`
     );
     // Spacing line for visual breathing room
     lines.push(`${color.cyan(S_BAR)}`);

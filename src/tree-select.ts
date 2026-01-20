@@ -91,6 +91,7 @@ export function getAllSkillIds(node: TreeNode): string[] {
 type SkillOption = { value: Skill; label: string; hint?: string };
 
 const SEARCH_THRESHOLD = 5;
+const MAX_SEARCH_LENGTH = 50;
 
 interface SearchableOption<T> {
   option: SkillOption;
@@ -205,6 +206,8 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
   private scrollOffset = 0;
   private readonly maxItems: number;
   private readonly promptMessage: string;
+  // Visual flash state for Ctrl+R focus
+  private searchFocusFlash = false;
 
   constructor(opts: SearchableMultiSelectOptions<T>) {
     super(
@@ -222,9 +225,18 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
 
-    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // Raw keypress listener for Page Up/Down and Ctrl+R
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
+      // Ctrl+R: Clear search and signal focus
+      if (key?.ctrl && key?.name === "r") {
+        this.searchTerm = "";
+        this.searchFocusFlash = true;
+        this.updateFilter();
+        // Clear flash after brief highlight, guarded to avoid state mutation after close
+        setTimeout(() => { if (this.state === "active") this.searchFocusFlash = false; }, 150);
+        return;
+      }
       if (key?.sequence === "\x1b[5~") {
         this.setCursorWithScrollPage("up");
       } else if (key?.sequence === "\x1b[6~") {
@@ -246,6 +258,8 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       return;
     }
     if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
+      // Enforce max search length to prevent display issues
+      if (this.searchTerm.length >= MAX_SEARCH_LENGTH) return;
       this.searchTerm += key;
       this.updateFilter();
     }
@@ -275,6 +289,10 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
         if (this.searchTerm) {
           this.searchTerm = "";
           this.updateFilter();
+        } else {
+          // No search term - cancel the prompt
+          this.state = "cancel";
+          this.close();
         }
         break;
     }
@@ -377,7 +395,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
     );
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
     );
     lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
@@ -555,8 +573,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
         this.searchTerm = "";
         this.searchFocusFlash = true;
         this.updateTabsForSearch();
-        // Clear flash after brief highlight
-        setTimeout(() => { this.searchFocusFlash = false; }, 150);
+        // Clear flash after brief highlight, guarded to avoid state mutation after close
+        setTimeout(() => { if (this.state === "active") this.searchFocusFlash = false; }, 150);
         return;
       }
       if (key?.sequence === "\x1b[5~") {
@@ -585,6 +603,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       return;
     }
     if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
+      // Enforce max search length to prevent display issues
+      if (this.searchTerm.length >= MAX_SEARCH_LENGTH) return;
       this.searchTerm += key;
       this.updateTabsForSearch();
     }
@@ -613,6 +633,10 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
         if (this.searchTerm) {
           this.searchTerm = "";
           this.updateTabsForSearch();
+        } else {
+          // No search term - cancel the prompt
+          this.state = "cancel";
+          this.close();
         }
         break;
     }
@@ -787,11 +811,10 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     // Render search box with bordered design
-    // Pass searchFocusFlash for visual feedback on Ctrl+R
-    // Users can still type to filter - only the visual state changes
+    // Active when prompt is receiving input OR during Ctrl+R flash feedback
     const searchBoxLines = renderSearchBox(
       this.searchTerm,
-      this.searchFocusFlash,
+      this.state === "active" || this.searchFocusFlash,
       LAYOUT.TAB_BAR_WIDTH
     );
     for (const line of searchBoxLines) {
@@ -811,7 +834,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     // Navigation hints below separator
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • ←/→/tab switch • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
     );
     // Spacing line for visual breathing room
     lines.push(`${color.cyan(S_BAR)}`);
@@ -916,6 +939,8 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
   private scrollOffset = 0;
   private readonly maxItems: number;
   private readonly promptMessage: string;
+  // Visual flash state for Ctrl+R focus
+  private searchFocusFlash = false;
 
   constructor(opts: SearchableGroupMultiSelectOptions<T>) {
     super(
@@ -935,9 +960,18 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
 
-    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // Raw keypress listener for Page Up/Down and Ctrl+R
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
+      // Ctrl+R: Clear search and signal focus
+      if (key?.ctrl && key?.name === "r") {
+        this.searchTerm = "";
+        this.searchFocusFlash = true;
+        this.updateFilter();
+        // Clear flash after brief highlight, guarded to avoid state mutation after close
+        setTimeout(() => { if (this.state === "active") this.searchFocusFlash = false; }, 150);
+        return;
+      }
       if (key?.sequence === "\x1b[5~") {
         this.setCursorWithScrollPage("up");
       } else if (key?.sequence === "\x1b[6~") {
@@ -986,6 +1020,8 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       return;
     }
     if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
+      // Enforce max search length to prevent display issues
+      if (this.searchTerm.length >= MAX_SEARCH_LENGTH) return;
       this.searchTerm += key;
       this.updateFilter();
     }
@@ -1015,6 +1051,10 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
         if (this.searchTerm) {
           this.searchTerm = "";
           this.updateFilter();
+        } else {
+          // No search term - cancel the prompt
+          this.state = "cancel";
+          this.close();
         }
         break;
     }
@@ -1153,7 +1193,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
     );
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
     );
     lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
