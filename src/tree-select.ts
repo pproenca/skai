@@ -11,6 +11,13 @@ import {
   S_CHECKBOX_ACTIVE,
   S_CHECKBOX_SELECTED,
   S_CHECKBOX_INACTIVE,
+  S_BOX_TOP_LEFT,
+  S_BOX_TOP_RIGHT,
+  S_BOX_BOTTOM_LEFT,
+  S_BOX_BOTTOM_RIGHT,
+  S_BOX_HORIZONTAL,
+  S_BOX_VERTICAL,
+  S_SEARCH_ICON,
   symbol,
   createSeparator,
 } from "./ui-constants.js";
@@ -126,6 +133,56 @@ function highlightMatch(text: string, searchTerm: string): string {
   const after = text.slice(index + searchTerm.length);
 
   return `${before}${color.cyan(match)}${after}`;
+}
+
+/**
+ * Render a search input box with rounded corners
+ * Returns an array of lines for the search box
+ */
+function renderSearchBox(
+  searchTerm: string,
+  isActive: boolean,
+  width: number = LAYOUT.TAB_BAR_WIDTH
+): string[] {
+  const lines: string[] = [];
+  // Inner width accounts for box characters and padding
+  const innerWidth = width - 4; // 2 for corners, 2 for spacing
+
+  // Build the search content
+  const cursor = isActive ? color.inverse(" ") : "";
+  let content: string;
+  if (searchTerm) {
+    content = `${S_SEARCH_ICON} ${searchTerm}${cursor}`;
+  } else {
+    content = color.dim(`${S_SEARCH_ICON} Search…`) + cursor;
+  }
+
+  // Calculate padding for the content (needs to fill the box)
+  // Note: We need to handle ANSI codes which add length but no visible width
+  const visibleLength = searchTerm
+    ? S_SEARCH_ICON.length + 1 + searchTerm.length + (isActive ? 1 : 0)
+    : S_SEARCH_ICON.length + 1 + "Search…".length + (isActive ? 1 : 0);
+  const padding = Math.max(0, innerWidth - visibleLength);
+
+  // Border color based on state
+  const borderColor = isActive ? color.cyan : color.dim;
+
+  // Top border
+  lines.push(
+    borderColor(S_BOX_TOP_LEFT + S_BOX_HORIZONTAL.repeat(innerWidth + 2) + S_BOX_TOP_RIGHT)
+  );
+
+  // Content line
+  lines.push(
+    borderColor(S_BOX_VERTICAL) + " " + content + " ".repeat(padding) + " " + borderColor(S_BOX_VERTICAL)
+  );
+
+  // Bottom border
+  lines.push(
+    borderColor(S_BOX_BOTTOM_LEFT + S_BOX_HORIZONTAL.repeat(innerWidth + 2) + S_BOX_BOTTOM_RIGHT)
+  );
+
+  return lines;
 }
 
 interface SearchableMultiSelectOptions<T> {
@@ -527,8 +584,67 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     return this.groupedOptions.reduce((sum, g) => sum + g.options.length, 0);
   }
 
+  /**
+   * Get match counts for each tab based on current search term
+   * Returns a map of tab ID to match count
+   */
+  private getMatchCountByTab(): Map<string, number> {
+    const counts = new Map<string, number>();
+    const term = this.searchTerm.toLowerCase();
+
+    // "All" tab gets total matching count
+    let allCount = 0;
+
+    for (const group of this.groupedOptions) {
+      const tabId = group.groupName.toLowerCase();
+      let count = 0;
+
+      if (term) {
+        count = group.options.filter((opt) =>
+          opt.searchableText.includes(term)
+        ).length;
+      } else {
+        count = group.options.length;
+      }
+
+      counts.set(tabId, count);
+      allCount += count;
+    }
+
+    counts.set("all", allCount);
+    return counts;
+  }
+
+  /**
+   * Update tab badges and disabled state based on search results
+   */
+  private updateTabsForSearch(): void {
+    if (!this.searchTerm) {
+      // Clear badges and disabled state when no search term
+      for (const tab of this.tabNav.tabs) {
+        tab.badge = undefined;
+        tab.disabled = false;
+      }
+      return;
+    }
+
+    const matchCounts = this.getMatchCountByTab();
+
+    for (const tab of this.tabNav.tabs) {
+      const count = matchCounts.get(tab.id) ?? 0;
+      // Show badge with match count when filtering
+      tab.badge = count;
+      // Disable tabs with no results (except "All" which is never disabled)
+      tab.disabled = tab.id !== "all" && count === 0;
+    }
+  }
+
   private renderPrompt(): string {
     const lines: string[] = [];
+
+    // Update tab badges and disabled state based on search
+    this.updateTabsForSearch();
+
     const filteredItems = this.getFilteredItems();
 
     lines.push(`${color.gray(S_BAR)}`);
@@ -561,10 +677,20 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     const selectedText =
       selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
-    const cursor = this.state === "active" ? color.inverse(" ") : "_";
-    lines.push(
-      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}${selectedText}`
+    // Render search box with bordered design
+    const searchBoxLines = renderSearchBox(
+      this.searchTerm,
+      this.state === "active",
+      LAYOUT.TAB_BAR_WIDTH
     );
+    for (const line of searchBoxLines) {
+      lines.push(`${color.cyan(S_BAR)}  ${line}`);
+    }
+
+    // Show selected count below search box if any
+    if (selectedText) {
+      lines.push(`${color.cyan(S_BAR)}  ${selectedText}`);
+    }
 
     // Render tab bar (includes its own separator line)
     const tabBarLines = this.tabNav.renderTabBar();

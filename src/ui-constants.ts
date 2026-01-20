@@ -61,6 +61,17 @@ export const S_TOGGLE_ACTIVE = color.cyan("◻");
 export const S_TOGGLE_ACTIVE_ENABLED = color.green("◼");
 
 /**
+ * Search box symbols (rounded corners)
+ */
+export const S_BOX_TOP_LEFT = "╭";
+export const S_BOX_TOP_RIGHT = "╮";
+export const S_BOX_BOTTOM_LEFT = "╰";
+export const S_BOX_BOTTOM_RIGHT = "╯";
+export const S_BOX_HORIZONTAL = "─";
+export const S_BOX_VERTICAL = "│";
+export const S_SEARCH_ICON = "⌕";
+
+/**
  * Helper to create a separator line
  */
 export function createSeparator(width: number = LAYOUT.SEPARATOR_WIDTH): string {

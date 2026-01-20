@@ -23,6 +23,8 @@ function getTabWidth(tab: Tab): number {
   let label = tab.label;
   if (tab.badge !== undefined && tab.badge > 0) {
     label = `${label} (${tab.badge})`;
+  } else if (tab.badge === 0 && tab.disabled) {
+    label = `${label} (0)`;
   }
   // Tab format: ` ${label} ` + 2 spaces between tabs
   return label.length + 2 + 2;
@@ -137,14 +139,22 @@ export function renderTabBar(options: TabBarOptions): string[] {
   for (let i = startIndex; i < endIndex; i++) {
     const tab = tabs[i];
     const isActive = i === activeIndex;
+    const isDisabled = tab.disabled === true;
 
     let label = tab.label;
     if (tab.badge !== undefined && tab.badge > 0) {
       label = `${label} (${tab.badge})`;
+    } else if (tab.badge === 0 && isDisabled) {
+      // Show (0) for disabled tabs with no results
+      label = `${label} (0)`;
     }
 
     if (isActive) {
+      // Active tab - use highlight even if disabled (user needs to see where they are)
       tabParts.push(color.bgCyan(color.black(` ${label} `)));
+    } else if (isDisabled) {
+      // Disabled tab - very dim to indicate no results
+      tabParts.push(` ${color.dim(color.gray(label))} `);
     } else {
       tabParts.push(` ${color.dim(label)} `);
     }
