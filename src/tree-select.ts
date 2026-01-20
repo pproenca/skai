@@ -518,6 +518,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
   // Memoization cache for match counts
   private matchCountCache: Map<string, number> | null = null;
   private matchCountCacheKey = "";
+  // Visual flash state for Ctrl+R focus
+  private searchFocusFlash = false;
 
   constructor(opts: TabbedGroupMultiSelectOptions<T>) {
     super(
@@ -545,9 +547,18 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
 
-    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // Raw keypress listener for Page Up/Down and Ctrl+R
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
+      // Ctrl+R: Clear search and signal focus
+      if (key?.ctrl && key?.name === "r") {
+        this.searchTerm = "";
+        this.searchFocusFlash = true;
+        this.updateTabsForSearch();
+        // Clear flash after brief highlight
+        setTimeout(() => { this.searchFocusFlash = false; }, 150);
+        return;
+      }
       if (key?.sequence === "\x1b[5~") {
         this.tabNav.navigateContentPage("up", this.getFilteredItems().length);
       } else if (key?.sequence === "\x1b[6~") {
@@ -759,11 +770,11 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     // Render search box with bordered design
-    // Pass false for isActive to always show dim borders (no blinking cursor)
+    // Pass searchFocusFlash for visual feedback on Ctrl+R
     // Users can still type to filter - only the visual state changes
     const searchBoxLines = renderSearchBox(
       this.searchTerm,
-      false,
+      this.searchFocusFlash,
       LAYOUT.TAB_BAR_WIDTH
     );
     for (const line of searchBoxLines) {
@@ -783,7 +794,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     // Navigation hints below separator
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("ctrl+r search • type to filter • ↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
     );
     // Spacing line for visual breathing room
     lines.push(`${color.cyan(S_BAR)}`);
