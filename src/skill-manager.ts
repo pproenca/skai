@@ -1,4 +1,5 @@
 import { Prompt, isCancel } from "@clack/core";
+import type { Readable, Writable } from "node:stream";
 import color from "picocolors";
 import type { AgentConfig } from "./types.js";
 import type { ManagedSkill, ToggleResult } from "./installer.js";
@@ -25,12 +26,18 @@ interface SkillManagerState {
   changes: Map<string, boolean>; // skill path -> new enabled state
 }
 
+interface SkillManagerOptions {
+  skills: ManagedSkill[];
+  input?: Readable;
+  output?: Writable;
+}
+
 function getSkillKey(skill: ManagedSkill): string {
   // Use path directly as it's guaranteed unique
   return skill.path;
 }
 
-class SkillManagerPrompt extends Prompt {
+export class SkillManagerPrompt extends Prompt {
   private state_data: SkillManagerState;
   private tabNav: TabNavigation;
   // Search state
@@ -45,10 +52,18 @@ class SkillManagerPrompt extends Prompt {
   private searchFlashTimerId: ReturnType<typeof setTimeout> | null = null;
   private keypressHandler!: (ch: string, key: { sequence?: string; ctrl?: boolean; name?: string; shift?: boolean }) => void;
 
-  constructor(skills: ManagedSkill[]) {
+  constructor(opts: SkillManagerOptions | ManagedSkill[]) {
+    // Support both old signature (skills array) and new signature (options object)
+    const isOptionsObject = !Array.isArray(opts);
+    const skills = isOptionsObject ? opts.skills : opts;
+    const input = isOptionsObject ? opts.input : undefined;
+    const output = isOptionsObject ? opts.output : undefined;
+
     super(
       {
         render: () => this.renderPrompt(),
+        input,
+        output,
       },
       false
     );

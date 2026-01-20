@@ -1,4 +1,5 @@
 import { Prompt, isCancel } from "@clack/core";
+import type { Readable, Writable } from "node:stream";
 import color from "picocolors";
 import type { Skill } from "../types.js";
 import type { SearchableOption } from "./types.js";
@@ -26,6 +27,8 @@ interface SearchableMultiSelectOptions<T> {
   options: SearchableOption<T>[];
   initialValues?: T[];
   maxItems?: number;
+  input?: Readable;
+  output?: Writable;
 }
 
 export class SearchableMultiSelectPrompt<T> extends Prompt {
@@ -42,6 +45,8 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
     super(
       {
         render: () => this.renderPrompt(),
+        input: opts.input,
+        output: opts.output,
       },
       false
     );

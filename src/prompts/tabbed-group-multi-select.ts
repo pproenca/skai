@@ -1,4 +1,5 @@
 import { Prompt, isCancel } from "@clack/core";
+import type { Readable, Writable } from "node:stream";
 import color from "picocolors";
 import type { Skill } from "../types.js";
 import type { SkillOption, SearchableGroupOption, GroupedSearchableOptions } from "./types.js";
@@ -26,6 +27,8 @@ interface TabbedGroupMultiSelectOptions<T> {
   groups: Record<string, SkillOption[]>;
   initialValues?: T[];
   maxItems?: number;
+  input?: Readable;
+  output?: Writable;
 }
 
 /**
@@ -55,6 +58,8 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     super(
       {
         render: () => this.renderPrompt(),
+        input: opts.input,
+        output: opts.output,
       },
       false
     );
