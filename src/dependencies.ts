@@ -147,19 +147,23 @@ export function getPackageManagerInstallUrl(pm: PackageManager): string {
 }
 
 export async function isPackageManagerAvailable(pm: PackageManager): Promise<boolean> {
-  const checkPromise = new Promise<boolean>((resolve) => {
-    const child = spawn(pm, ["--version"], {
-      stdio: "ignore",
-      shell: process.platform === "win32",
-    });
+  // Spawn child process outside Promise to ensure we can kill it on timeout
+  const child = spawn(pm, ["--version"], {
+    stdio: "ignore",
+    shell: process.platform === "win32",
+  });
 
+  const checkPromise = new Promise<boolean>((resolve) => {
     child.on("error", () => resolve(false));
     child.on("close", (code) => resolve(code === 0));
   });
 
   // Add timeout to prevent hanging if package manager is unresponsive
   const timeoutPromise = new Promise<boolean>((resolve) => {
-    setTimeout(() => resolve(false), PM_CHECK_TIMEOUT_MS);
+    setTimeout(() => {
+      child.kill("SIGTERM"); // Kill child process on timeout to prevent zombie
+      resolve(false);
+    }, PM_CHECK_TIMEOUT_MS);
   });
 
   return Promise.race([checkPromise, timeoutPromise]);

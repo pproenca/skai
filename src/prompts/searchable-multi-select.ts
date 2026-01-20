@@ -35,6 +35,8 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
   private filteredOptions: SearchableOption<T>[];
   private readonly promptMessage: string;
   private readonly scrollList: ScrollableList;
+  // Cleanup tracking
+  private keypressHandler!: (ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => void;
 
   constructor(opts: SearchableMultiSelectOptions<T>) {
     super(
@@ -54,7 +56,7 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
 
     // Raw keypress listener for Page Up/Down and Ctrl+R
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
+    this.keypressHandler = (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
       // Ctrl+R: Clear search
       if (key?.ctrl && key?.name === "r") {
         this.searchTerm = "";
@@ -66,7 +68,15 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
       } else if (key?.sequence === "\x1b[6~") {
         this.scrollList.navigatePage("down", this.filteredOptions.length);
       }
-    });
+    };
+    this.input.on("keypress", this.keypressHandler);
+  }
+
+  /**
+   * Clean up event listeners
+   */
+  private cleanup(): void {
+    this.input.off("keypress", this.keypressHandler);
   }
 
   private handleKey(key: string): void {
@@ -108,6 +118,7 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
           this.updateFilter();
         } else {
           // No search term - cancel the prompt
+          this.cleanup();
           this.state = "cancel";
           this.close();
         }
@@ -213,6 +224,8 @@ export class SearchableMultiSelectPrompt<T> extends Prompt {
 
   async run(): Promise<T[] | symbol> {
     const result = await this.prompt();
+    // Ensure cleanup on all exit paths (submit case)
+    this.cleanup();
     if (isCancel(result)) {
       return result;
     }

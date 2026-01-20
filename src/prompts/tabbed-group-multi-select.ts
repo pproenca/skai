@@ -47,6 +47,9 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
   private matchCountCacheKey = "";
   // Visual flash state for Ctrl+R focus
   private searchFocusFlash = false;
+  // Cleanup tracking
+  private searchFlashTimerId: ReturnType<typeof setTimeout> | null = null;
+  private keypressHandler!: (ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => void;
 
   constructor(opts: TabbedGroupMultiSelectOptions<T>) {
     super(
@@ -76,14 +79,21 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     // Raw keypress listener for Page Up/Down and Ctrl+R
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
+    this.keypressHandler = (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string }) => {
       // Ctrl+R: Clear search and signal focus
       if (key?.ctrl && key?.name === "r") {
         this.searchTerm = "";
         this.searchFocusFlash = true;
         this.updateTabsForSearch();
+        // Clear any existing timer before setting a new one
+        if (this.searchFlashTimerId) {
+          clearTimeout(this.searchFlashTimerId);
+        }
         // Clear flash after brief highlight, guarded to avoid state mutation after close
-        setTimeout(() => { if (this.state === "active") this.searchFocusFlash = false; }, 150);
+        this.searchFlashTimerId = setTimeout(() => {
+          if (this.state === "active") this.searchFocusFlash = false;
+          this.searchFlashTimerId = null;
+        }, 150);
         return;
       }
       if (key?.sequence === "\x1b[5~") {
@@ -91,7 +101,19 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       } else if (key?.sequence === "\x1b[6~") {
         this.tabNav.navigateContentPage("down", this.getFilteredItems().length);
       }
-    });
+    };
+    this.input.on("keypress", this.keypressHandler);
+  }
+
+  /**
+   * Clean up timers and event listeners
+   */
+  private cleanup(): void {
+    if (this.searchFlashTimerId) {
+      clearTimeout(this.searchFlashTimerId);
+      this.searchFlashTimerId = null;
+    }
+    this.input.off("keypress", this.keypressHandler);
   }
 
   private handleKey(key: string): void {
@@ -144,6 +166,7 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
           this.updateTabsForSearch();
         } else {
           // No search term - cancel the prompt
+          this.cleanup();
           this.state = "cancel";
           this.close();
         }
@@ -385,6 +408,8 @@ export class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
   async run(): Promise<T[] | symbol> {
     const result = await this.prompt();
+    // Ensure cleanup on all exit paths (submit case)
+    this.cleanup();
     if (isCancel(result)) {
       return result;
     }

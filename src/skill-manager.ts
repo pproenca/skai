@@ -41,6 +41,9 @@ class SkillManagerPrompt extends Prompt {
   private filteredSkillsCacheKey = "";
   private matchCountCache: Map<string, number> | null = null;
   private matchCountCacheKey = "";
+  // Cleanup tracking
+  private searchFlashTimerId: ReturnType<typeof setTimeout> | null = null;
+  private keypressHandler!: (ch: string, key: { sequence?: string; ctrl?: boolean; name?: string; shift?: boolean }) => void;
 
   constructor(skills: ManagedSkill[]) {
     super(
@@ -70,14 +73,21 @@ class SkillManagerPrompt extends Prompt {
 
     // Raw keypress listener for Page Up/Down, Ctrl+R, and Shift+Tab
     // The "key" event from @clack/core only passes the first character
-    this.input.on("keypress", (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string; shift?: boolean }) => {
+    this.keypressHandler = (_ch: string, key: { sequence?: string; ctrl?: boolean; name?: string; shift?: boolean }) => {
       // Ctrl+R: Clear search and signal focus
       if (key?.ctrl && key?.name === "r") {
         this.searchTerm = "";
         this.searchFocusFlash = true;
         this.updateTabsForSearch();
+        // Clear any existing timer before setting a new one
+        if (this.searchFlashTimerId) {
+          clearTimeout(this.searchFlashTimerId);
+        }
         // Clear flash after brief highlight, guarded to avoid state mutation after close
-        setTimeout(() => { if (this.state === "active") this.searchFocusFlash = false; }, 150);
+        this.searchFlashTimerId = setTimeout(() => {
+          if (this.state === "active") this.searchFocusFlash = false;
+          this.searchFlashTimerId = null;
+        }, 150);
         return;
       }
       // Shift+Tab: Navigate tabs backward
@@ -90,7 +100,19 @@ class SkillManagerPrompt extends Prompt {
       } else if (key?.sequence === "\x1b[6~") {
         this.tabNav.navigateContentPage("down", this.getFilteredSkills().length);
       }
-    });
+    };
+    this.input.on("keypress", this.keypressHandler);
+  }
+
+  /**
+   * Clean up timers and event listeners
+   */
+  private cleanup(): void {
+    if (this.searchFlashTimerId) {
+      clearTimeout(this.searchFlashTimerId);
+      this.searchFlashTimerId = null;
+    }
+    this.input.off("keypress", this.keypressHandler);
   }
 
   private handleKey(key: string): void {
@@ -144,6 +166,7 @@ class SkillManagerPrompt extends Prompt {
           this.searchTerm = "";
           this.updateTabsForSearch();
         } else {
+          this.cleanup();
           this.state = "cancel";
           this.close();
         }
@@ -532,6 +555,8 @@ class SkillManagerPrompt extends Prompt {
 
   async run(): Promise<{ skills: ManagedSkill[]; changes: Map<string, boolean> } | symbol> {
     const result = await this.prompt();
+    // Ensure cleanup on all exit paths (submit case)
+    this.cleanup();
     if (isCancel(result)) {
       return result;
     }
