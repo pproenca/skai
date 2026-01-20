@@ -42,17 +42,17 @@ function calculateVisibleTabs(
     return { startIndex: 0, endIndex: 0, hasMore: { left: false, right: false } };
   }
 
+  // Always reserve space for arrow placeholders to prevent layout shifts
+  const widthWithIndicators = availableWidth - OVERFLOW_LEFT.length - OVERFLOW_RIGHT.length;
+
   // Calculate widths for all tabs
   const tabWidths = tabs.map(getTabWidth);
   const totalWidth = tabWidths.reduce((sum, w) => sum + w, 0);
 
-  // If everything fits, show all
-  if (totalWidth <= availableWidth) {
+  // If everything fits (within reserved space), show all
+  if (totalWidth <= widthWithIndicators) {
     return { startIndex: 0, endIndex: tabs.length, hasMore: { left: false, right: false } };
   }
-
-  // Need overflow - account for indicators
-  const widthWithIndicators = availableWidth - OVERFLOW_LEFT.length - OVERFLOW_RIGHT.length;
 
   // Start from active tab and expand outward
   let startIndex = activeIndex;
@@ -151,14 +151,10 @@ export function renderTabBar(options: TabBarOptions): string[] {
     }
   }
 
-  // Build tab line with overflow indicators
-  let tabLine = tabParts.join("  ");
-  if (hasMore.left) {
-    tabLine = color.dim(OVERFLOW_LEFT) + tabLine;
-  }
-  if (hasMore.right) {
-    tabLine = tabLine + color.dim(OVERFLOW_RIGHT);
-  }
+  // Build tab line with fixed-width arrow placeholders to prevent layout shifts
+  const leftArrow = hasMore.left ? color.dim(OVERFLOW_LEFT) : " ".repeat(OVERFLOW_LEFT.length);
+  const rightArrow = hasMore.right ? color.dim(OVERFLOW_RIGHT) : " ".repeat(OVERFLOW_RIGHT.length);
+  const tabLine = leftArrow + tabParts.join("  ") + rightArrow;
 
   lines.push(tabLine);
 

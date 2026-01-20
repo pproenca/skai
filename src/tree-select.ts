@@ -544,9 +544,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
   private renderPrompt(): string {
     const lines: string[] = [];
-    const total = this.getTotalOptionCount();
     const filteredItems = this.getFilteredItems();
-    const filtered = filteredItems.length;
 
     lines.push(`${color.gray(S_BAR)}`);
     lines.push(`${symbol(this.state)}  ${this.promptMessage}`);
@@ -575,16 +573,12 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     }
 
     const selectedCount = this.selectedValues.size;
-    const countText =
-      this.searchTerm || filtered !== total
-        ? `(${filtered} of ${total} skills)`
-        : `(${total} skills)`;
     const selectedText =
       selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     const cursor = this.state === "active" ? color.inverse(" ") : "_";
     lines.push(
-      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
+      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}${selectedText}`
     );
 
     // Render tab bar (includes its own separator line)
@@ -597,6 +591,8 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     lines.push(
       `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
     );
+    // Spacing line for visual breathing room
+    lines.push(`${color.cyan(S_BAR)}`);
 
     if (filteredItems.length === 0) {
       lines.push(
