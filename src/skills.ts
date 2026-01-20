@@ -71,14 +71,41 @@ export function parseSkillMd(filePath: string, searchRoot?: string): Skill | nul
       data.name = path.basename(skillDir);
     }
 
-    const category = searchRoot ? extractCategory(skillDir, searchRoot) : [];
+    // Priority 1: Check metadata.json for category
+    let category: string[] | undefined;
+    const metadataPath = path.join(skillDir, "metadata.json");
+    if (fs.existsSync(metadataPath)) {
+      try {
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8"));
+        if (metadata.category) {
+          category = Array.isArray(metadata.category)
+            ? metadata.category
+            : [metadata.category];
+        }
+      } catch { /* ignore malformed metadata.json */ }
+    }
+
+    // Priority 2: Check SKILL.md frontmatter for category
+    if (!category && data.category) {
+      category = Array.isArray(data.category)
+        ? data.category
+        : [data.category];
+    }
+
+    // Priority 3: Fall back to folder-based category
+    if (!category && searchRoot) {
+      const folderCategory = extractCategory(skillDir, searchRoot);
+      if (folderCategory.length > 0) {
+        category = folderCategory;
+      }
+    }
 
     return {
       name: data.name,
       description: data.description || "",
       path: skillDir,
       content: markdownContent.trim(),
-      category: category.length > 0 ? category : undefined,
+      category: category && category.length > 0 ? category : undefined,
     };
   } catch {
     return null;

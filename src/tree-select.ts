@@ -178,6 +178,10 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
+    // Ignore Tab and Space - handled by cursor events
+    if (key === "\t" || key === " ") {
+      return;
+    }
     if (key === "\x7f" || key === "\b") {
       if (this.searchTerm.length > 0) {
         this.searchTerm = this.searchTerm.slice(0, -1);
@@ -185,7 +189,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       }
       return;
     }
-    if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
+    if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
       this.searchTerm += key;
       this.updateFilter();
     }
@@ -448,13 +452,17 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
+    // Ignore Tab and Space - handled by cursor events
+    if (key === "\t" || key === " ") {
+      return;
+    }
     if (key === "\x7f" || key === "\b") {
       if (this.searchTerm.length > 0) {
         this.searchTerm = this.searchTerm.slice(0, -1);
       }
       return;
     }
-    if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
+    if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
       this.searchTerm += key;
     }
   }
@@ -728,6 +736,10 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
+    // Ignore Tab and Space - handled by cursor events
+    if (key === "\t" || key === " ") {
+      return;
+    }
     if (key === "\x7f" || key === "\b") {
       if (this.searchTerm.length > 0) {
         this.searchTerm = this.searchTerm.slice(0, -1);
@@ -735,7 +747,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       }
       return;
     }
-    if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
+    if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
       this.searchTerm += key;
       this.updateFilter();
     }
