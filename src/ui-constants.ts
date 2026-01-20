@@ -93,3 +93,17 @@ export function symbol(state: string): string {
       return color.cyan("◆");
   }
 }
+
+/**
+ * Get the appropriate checkbox symbol based on selection and active state
+ * Consolidates duplicate checkbox rendering logic from tree-select.ts
+ */
+export function getCheckboxSymbol(isSelected: boolean, isActive: boolean): string {
+  if (isSelected) {
+    return S_CHECKBOX_SELECTED;
+  }
+  if (isActive) {
+    return S_CHECKBOX_ACTIVE;
+  }
+  return S_CHECKBOX_INACTIVE;
+}

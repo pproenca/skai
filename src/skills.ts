@@ -2,44 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import matter from "gray-matter";
 import type { Skill, SkillTreeNode, TreeNode } from "./types.js";
-
-const SKILL_FILENAME = "SKILL.md";
-const MAX_DEPTH = 10;
-const SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  ".nuxt",
-  "coverage",
-  "__pycache__",
-]);
-
-// Directories that are transparent (not included in category path)
-const TRANSPARENT_DIRS = new Set([".curated", ".experimental", ".system"]);
-
-// Priority directories to search first
-const PRIORITY_DIRS = [
-  "", // repo root
-  "skills",
-  "skills/.curated",
-  "skills/.experimental",
-  "skills/.system",
-  ".claude/skills",
-  ".cursor/skills",
-  ".opencode/skill",
-  ".codex/skills",
-  ".agents/skills",
-  ".kilocode/skills",
-  ".roo/skills",
-  ".goose/skills",
-  ".gemini/skills",
-  ".agent/skills",
-  ".github/skills",
-  ".factory/skills",
-  ".windsurf/skills",
-];
+import {
+  SKILL_FILENAME,
+  MAX_DEPTH,
+  SKIP_DIRS,
+  TRANSPARENT_DIRS,
+  PRIORITY_DIRS,
+} from "./config.js";
 
 function extractCategory(skillDir: string, searchRoot: string): string[] {
   // Get relative path from search root to skill directory

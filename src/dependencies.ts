@@ -7,30 +7,14 @@ import type {
   DependencyConflict,
   DependencyInstallResult,
 } from "./types.js";
-
-const SUPPORTED_PACKAGE_MANAGERS: PackageManager[] = ["npm", "pnpm", "yarn", "bun"];
-
-const LOCKFILE_TO_PM: Record<string, PackageManager> = {
-  "pnpm-lock.yaml": "pnpm",
-  "package-lock.json": "npm",
-  "yarn.lock": "yarn",
-  "bun.lock": "bun",
-  "bun.lockb": "bun",
-};
-
-const PM_INSTALL_COMMANDS: Record<PackageManager, { command: string; args: string[] }> = {
-  npm: { command: "npm", args: ["install", "--save"] },
-  pnpm: { command: "pnpm", args: ["add"] },
-  yarn: { command: "yarn", args: ["add"] },
-  bun: { command: "bun", args: ["add"] },
-};
-
-const PM_INSTALL_URLS: Record<PackageManager, string> = {
-  npm: "https://docs.npmjs.com/downloading-and-installing-node-js-and-npm",
-  pnpm: "https://pnpm.io/installation",
-  yarn: "https://yarnpkg.com/getting-started/install",
-  bun: "https://bun.sh/docs/installation",
-};
+import {
+  SUPPORTED_PACKAGE_MANAGERS,
+  LOCKFILE_TO_PM,
+  PM_INSTALL_COMMANDS,
+  PM_INSTALL_URLS,
+  PM_CHECK_TIMEOUT_MS,
+  PM_INSTALL_TIMEOUT_MS,
+} from "./config.js";
 
 export function extractDependencies(skillPath: string): SkillDependencies | null {
   const packageJsonPath = path.join(skillPath, "package.json");
@@ -161,9 +145,6 @@ export function formatDependencySummary(
 export function getPackageManagerInstallUrl(pm: PackageManager): string {
   return PM_INSTALL_URLS[pm];
 }
-
-const PM_CHECK_TIMEOUT_MS = 5000; // 5 second timeout for checking package manager availability
-const PM_INSTALL_TIMEOUT_MS = 300000; // 5 minute timeout for installing dependencies
 
 export async function isPackageManagerAvailable(pm: PackageManager): Promise<boolean> {
   const checkPromise = new Promise<boolean>((resolve) => {

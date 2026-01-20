@@ -6,7 +6,10 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type {
-  CLIOptions,
+  InstallCLIOptions,
+  UninstallCLIOptions,
+  ListCLIOptions,
+  UpdateCLIOptions,
   AgentConfig,
   Skill,
   SkillTreeNode,
@@ -40,11 +43,10 @@ import {
   installDependencies,
   hasProjectPackageJson,
 } from './dependencies.js';
+import { formatGitError, getErrorMessage } from './errors.js';
+import { EXIT_ERROR, EXIT_CANCELLED } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const EXIT_ERROR = 1;
-const EXIT_CANCELLED = 2;
 
 interface PackageJson {
   version?: string;
@@ -107,77 +109,42 @@ function printSkillTree(node: SkillTreeNode, indent = 0): void {
   }
 }
 
-function formatGitError(error: Error, url: string): string {
-  const msg = error.message.toLowerCase();
+// Status display configuration for install results
+const STATUS_CONFIG = {
+  installed: { icon: '✓', color: chalk.green, suffixField: 'path' as const },
+  'would-install': { icon: '○', color: chalk.cyan, suffixField: 'path' as const },
+  skipped: { icon: '–', color: chalk.yellow, suffixField: 'reason' as const },
+  failed: { icon: '✗', color: chalk.red, suffixField: 'reason' as const },
+} as const;
 
-  if (msg.includes('authentication') || msg.includes('401') || msg.includes('403')) {
-    return `Authentication failed for ${url}. Check your credentials or ensure the repository is public.`;
+function groupByAgent(statuses: SkillInstallStatus[]): Map<string, SkillInstallStatus[]> {
+  const grouped = new Map<string, SkillInstallStatus[]>();
+  for (const status of statuses) {
+    const existing = grouped.get(status.agentName);
+    if (existing) {
+      existing.push(status);
+    } else {
+      grouped.set(status.agentName, [status]);
+    }
   }
-
-  if (msg.includes('not found') || msg.includes('404') || msg.includes('does not exist')) {
-    return `Repository not found: ${url}. Check the URL or owner/repo name.`;
-  }
-
-  if (msg.includes('timeout') || msg.includes('timed out')) {
-    return `Connection timed out while cloning ${url}. Check your network connection.`;
-  }
-
-  if (msg.includes('could not resolve host') || msg.includes('network')) {
-    return `Network error while cloning ${url}. Check your internet connection.`;
-  }
-
-  if (msg.includes('permission denied')) {
-    return `Permission denied when accessing ${url}. The repository may be private.`;
-  }
-
-  return `Failed to clone repository: ${error.message}`;
+  return grouped;
 }
 
 function formatInstallStatus(statuses: SkillInstallStatus[], isDryRun: boolean): void {
   if (statuses.length === 0) return;
 
-  const grouped = new Map<string, SkillInstallStatus[]>();
-  for (const status of statuses) {
-    const key = status.agentName;
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.push(status);
-    } else {
-      grouped.set(key, [status]);
-    }
-  }
+  const grouped = groupByAgent(statuses);
 
   for (const [agent, skills] of grouped) {
     console.log(chalk.bold(`\n${agent}:`));
     for (const skill of skills) {
-      let icon: string;
-      let color: (s: string) => string;
-      let suffix = '';
+      const config = STATUS_CONFIG[skill.status];
+      const suffixValue = config.suffixField === 'path' ? skill.path : skill.reason;
+      const suffix = suffixValue
+        ? chalk.dim(config.suffixField === 'path' ? ` → ${suffixValue}` : ` (${suffixValue})`)
+        : '';
 
-      switch (skill.status) {
-        case 'installed':
-          icon = '✓';
-          color = chalk.green;
-          suffix = skill.path ? chalk.dim(` → ${skill.path}`) : '';
-          break;
-        case 'would-install':
-          icon = '○';
-          color = chalk.cyan;
-          suffix = skill.path ? chalk.dim(` → ${skill.path}`) : '';
-          break;
-        case 'skipped':
-          icon = '–';
-          color = chalk.yellow;
-          suffix = skill.reason ? chalk.dim(` (${skill.reason})`) : '';
-          break;
-        case 'failed':
-          icon = '✗';
-          color = chalk.red;
-          suffix = skill.reason ? chalk.dim(` (${skill.reason})`) : '';
-          break;
-      }
-
-      console.log(`  ${color(icon)} ${skill.skillName}${suffix}`);
+      console.log(`  ${config.color(config.icon)} ${skill.skillName}${suffix}`);
     }
   }
 
@@ -186,9 +153,517 @@ function formatInstallStatus(statuses: SkillInstallStatus[], isDryRun: boolean):
   }
 }
 
-interface InstallOptions extends CLIOptions {
-  dryRun: boolean;
+// Use the new typed options - alias for clarity within this file
+type InstallOptions = InstallCLIOptions;
+
+// ============================================================================
+// Install Helper Functions (extracted from runInstall)
+// ============================================================================
+
+interface SourceResolution {
+  skillsBasePath: string;
+  tempDir: string | null;
+  subpath?: string;
 }
+
+/**
+ * Resolve the source to a local path (either direct local path or cloned repo)
+ */
+async function resolveSkillsSource(source: string): Promise<SourceResolution> {
+  const parsed = parseSource(source);
+  clack.log.info(`Source type: ${parsed.type}`);
+
+  if (parsed.type === 'local') {
+    if (!parsed.localPath) {
+      throw new Error('Local path not found in parsed source');
+    }
+    if (!fs.existsSync(parsed.localPath)) {
+      throw new Error(`Local path does not exist: ${parsed.localPath}`);
+    }
+    clack.log.info(`Using local path: ${parsed.localPath}`);
+    return { skillsBasePath: parsed.localPath, tempDir: null };
+  }
+
+  const spinner = clack.spinner();
+  spinner.start('Cloning repository...');
+
+  try {
+    if (!parsed.url) {
+      throw new Error('URL not found in parsed source');
+    }
+    const tempDir = await cloneRepo(parsed.url, parsed.branch);
+    spinner.stop('Repository cloned');
+    return { skillsBasePath: tempDir, tempDir, subpath: parsed.subpath };
+  } catch (error) {
+    spinner.stop('Failed to clone repository');
+    const formattedError = formatGitError(error as Error, parsed.url || source);
+    throw new Error(formattedError);
+  }
+}
+
+/**
+ * Filter skills based on CLI options
+ */
+function filterSkillsByOptions(skills: Skill[], skillFilters?: string[]): Skill[] {
+  if (!skillFilters || skillFilters.length === 0) {
+    return skills;
+  }
+
+  const filtered = skills.filter((s) =>
+    skillFilters.some((filter) => matchesSkillFilter(s, filter))
+  );
+
+  if (filtered.length === 0) {
+    clack.log.error(`No matching skills found for: ${skillFilters.join(', ')}`);
+    clack.log.info(`Available skills: ${skills.map((s) => s.name).join(', ')}`);
+  }
+
+  return filtered;
+}
+
+/**
+ * Resolve target agents based on CLI options
+ */
+async function resolveTargetAgents(
+  agentNames: string[] | undefined,
+  autoConfirm: boolean
+): Promise<AgentConfig[] | null> {
+  if (agentNames && agentNames.length > 0) {
+    const invalidAgents: string[] = [];
+    const targetAgents: AgentConfig[] = [];
+
+    for (const name of agentNames) {
+      const agent = getAgentByName(name);
+      if (agent) {
+        targetAgents.push(agent);
+      } else {
+        invalidAgents.push(name);
+      }
+    }
+
+    if (invalidAgents.length > 0) {
+      clack.log.warn(`Unknown agent(s): ${invalidAgents.join(', ')}`);
+      clack.log.info(`Available agents: ${getAllAgents().map((a) => a.name).join(', ')}`);
+    }
+
+    if (targetAgents.length === 0) {
+      clack.log.error('No valid agents specified');
+      return null;
+    }
+
+    return targetAgents;
+  }
+
+  const detectedAgents = detectInstalledAgents();
+
+  if (detectedAgents.length === 0) {
+    clack.log.warn('No AI agents detected on your system');
+
+    if (autoConfirm) {
+      return null;
+    }
+
+    const useAll = await clack.confirm({
+      message: 'Would you like to see all available agents?',
+    });
+
+    if (clack.isCancel(useAll)) {
+      return null;
+    }
+
+    return useAll ? getAllAgents() : null;
+  }
+
+  clack.log.info(`Detected ${detectedAgents.length} agent(s): ${detectedAgents.map((a) => a.displayName).join(', ')}`);
+  return detectedAgents;
+}
+
+/**
+ * Interactive skill selection
+ */
+async function selectSkillsInteractive(
+  filteredSkills: Skill[],
+  options: { skill?: string[]; yes: boolean }
+): Promise<Skill[] | null> {
+  // If skills specified via CLI or auto-confirm, use filtered skills directly
+  if ((options.skill && options.skill.length > 0) || options.yes || filteredSkills.length === 1) {
+    return filteredSkills;
+  }
+
+  const tree = buildSkillTree(filteredSkills);
+  let treeNodes = skillTreeToTreeNodes(tree);
+  treeNodes = flattenSingleCategories(treeNodes);
+
+  try {
+    const selectedSkills = await treeSelect(treeNodes);
+    return selectedSkills.length === 0 ? null : selectedSkills;
+  } catch {
+    // treeSelect throws when user cancels with Ctrl+C or Escape
+    return null;
+  }
+}
+
+/**
+ * Interactive agent selection
+ */
+async function selectAgentsInteractive(
+  targetAgents: AgentConfig[],
+  options: { agent?: string[]; yes: boolean; global: boolean }
+): Promise<AgentConfig[] | null> {
+  // If agents specified via CLI or auto-confirm or single agent, use target agents directly
+  if ((options.agent && options.agent.length > 0) || options.yes || targetAgents.length === 1) {
+    return targetAgents;
+  }
+
+  const agentChoices = targetAgents.map((a) => ({
+    value: a,
+    label: a.displayName,
+    hint: options.global ? a.globalPath : a.projectPath,
+  }));
+
+  const selected = await clack.multiselect({
+    message: 'Select agents to install to:',
+    options: agentChoices,
+    required: true,
+  });
+
+  if (clack.isCancel(selected)) {
+    return null;
+  }
+
+  return selected as AgentConfig[];
+}
+
+/**
+ * Select installation scope (project vs global)
+ */
+async function selectInstallScope(
+  currentGlobal: boolean,
+  autoConfirm: boolean
+): Promise<boolean | null> {
+  if (currentGlobal || autoConfirm) {
+    return currentGlobal;
+  }
+
+  const scope = await clack.select({
+    message: 'Where would you like to install?',
+    options: [
+      { value: 'project', label: 'Project', hint: 'Install to current project only' },
+      { value: 'global', label: 'Global', hint: 'Install to user home directory' },
+    ],
+  });
+
+  if (clack.isCancel(scope)) {
+    return null;
+  }
+
+  return scope === 'global';
+}
+
+interface DryRunResult {
+  statuses: SkillInstallStatus[];
+}
+
+/**
+ * Perform dry-run preview of installation
+ */
+function performDryRun(
+  selectedSkills: Skill[],
+  selectedAgents: AgentConfig[],
+  installOptions: { global: boolean; yes: boolean }
+): DryRunResult {
+  const statuses: SkillInstallStatus[] = [];
+
+  for (const skill of selectedSkills) {
+    for (const agent of selectedAgents) {
+      const targetPath = getSkillInstallPath(skill.name, agent, installOptions);
+
+      if (isSkillInstalled(skill, agent, installOptions)) {
+        statuses.push({
+          skillName: skill.name,
+          agentName: agent.displayName,
+          status: 'skipped',
+          path: targetPath,
+          reason: 'already installed',
+        });
+      } else {
+        statuses.push({
+          skillName: skill.name,
+          agentName: agent.displayName,
+          status: 'would-install',
+          path: targetPath,
+        });
+      }
+    }
+  }
+
+  return { statuses };
+}
+
+interface InstallResult {
+  results: { success: number; failed: number; skipped: number };
+  statuses: SkillInstallStatus[];
+  installedSkillNames: string[];
+}
+
+/**
+ * Install skills to agents
+ */
+function installSkillsToAgents(
+  selectedSkills: Skill[],
+  selectedAgents: AgentConfig[],
+  installOptions: { global: boolean; yes: boolean },
+  outputJson: boolean
+): InstallResult {
+  const results = { success: 0, failed: 0, skipped: 0 };
+  const installedSkillNames: string[] = [];
+  const statuses: SkillInstallStatus[] = [];
+
+  for (const skill of selectedSkills) {
+    for (const agent of selectedAgents) {
+      const targetPath = getSkillInstallPath(skill.name, agent, installOptions);
+
+      if (isSkillInstalled(skill, agent, installOptions)) {
+        results.skipped++;
+        statuses.push({
+          skillName: skill.name,
+          agentName: agent.displayName,
+          status: 'skipped',
+          path: targetPath,
+          reason: 'already installed',
+        });
+        continue;
+      }
+
+      const result = installSkillForAgent(skill, agent, installOptions);
+
+      if (result.success) {
+        results.success++;
+        statuses.push({
+          skillName: skill.name,
+          agentName: agent.displayName,
+          status: 'installed',
+          path: result.targetPath,
+        });
+        if (!installedSkillNames.includes(skill.name)) {
+          installedSkillNames.push(skill.name);
+        }
+      } else {
+        results.failed++;
+        statuses.push({
+          skillName: skill.name,
+          agentName: agent.displayName,
+          status: 'failed',
+          reason: result.error,
+        });
+        if (!outputJson) {
+          clack.log.warn(`Failed to install ${skill.name} to ${agent.displayName}: ${result.error}`);
+        }
+      }
+    }
+  }
+
+  return { results, statuses, installedSkillNames };
+}
+
+interface DependencyHandleResult {
+  depsInstalled: boolean;
+  usedPackageManager: PackageManager | null;
+}
+
+/**
+ * Handle dependency installation (uses guard clauses for cleaner flow)
+ */
+async function handleDependencies(
+  selectedSkills: Skill[],
+  options: { yes: boolean; json: boolean }
+): Promise<DependencyHandleResult> {
+  const skillDeps: SkillDependencies[] = [];
+  for (const skill of selectedSkills) {
+    const deps = extractDependencies(skill.path);
+    if (deps) {
+      skillDeps.push(deps);
+    }
+  }
+
+  // Guard: No dependencies found
+  if (skillDeps.length === 0) {
+    return { depsInstalled: false, usedPackageManager: null };
+  }
+
+  const mergedDeps = mergeDependencies(skillDeps);
+  const detectedPm = detectPackageManager();
+
+  // Guard: JSON mode - install silently if possible
+  if (options.json) {
+    if (!hasProjectPackageJson()) {
+      return { depsInstalled: false, usedPackageManager: detectedPm };
+    }
+    const installResult = await installDependencies(mergedDeps, detectedPm);
+    return { depsInstalled: installResult.installed, usedPackageManager: detectedPm };
+  }
+
+  // Display dependency summary
+  clack.log.info(chalk.bold('\n📦 Skills with dependencies:'));
+  for (const line of formatDependencySummary(skillDeps)) {
+    clack.log.info(`   ${line}`);
+  }
+
+  // Check and display conflicts
+  const conflicts = checkConflicts(skillDeps);
+  if (conflicts.length > 0) {
+    clack.log.warn(chalk.yellow('\n⚠ Dependency conflicts detected:'));
+    for (const conflict of conflicts) {
+      clack.log.warn(
+        `   • ${conflict.packageName}: skill requires ${conflict.skillVersion}, project has ${conflict.projectVersion}`
+      );
+    }
+  }
+
+  const isInteractive = process.stdout.isTTY && !options.yes;
+
+  // Guard: Non-interactive mode
+  if (!isInteractive) {
+    return handleNonInteractiveDeps(mergedDeps, detectedPm);
+  }
+
+  return handleInteractiveDeps(mergedDeps, detectedPm);
+}
+
+/**
+ * Handle dependency installation in non-interactive mode
+ */
+async function handleNonInteractiveDeps(
+  mergedDeps: Record<string, string>,
+  pm: PackageManager
+): Promise<DependencyHandleResult> {
+  if (!hasProjectPackageJson()) {
+    clack.log.warn('No package.json found. Skipping dependency installation.');
+    showManualInstallHint(mergedDeps, pm);
+    return { depsInstalled: false, usedPackageManager: pm };
+  }
+
+  const depInstallSpinner = clack.spinner();
+  depInstallSpinner.start(`Installing dependencies with ${pm} (${Object.keys(mergedDeps).length} packages)...`);
+
+  const installResult = await installDependencies(mergedDeps, pm);
+
+  if (installResult.installed) {
+    depInstallSpinner.stop('Dependencies installed');
+    return { depsInstalled: true, usedPackageManager: pm };
+  }
+
+  depInstallSpinner.stop('Dependency installation failed');
+  clack.log.warn(installResult.error ?? 'Unknown error');
+  showManualInstallHint(mergedDeps, pm);
+  return { depsInstalled: false, usedPackageManager: pm };
+}
+
+/**
+ * Handle dependency installation in interactive mode
+ */
+async function handleInteractiveDeps(
+  mergedDeps: Record<string, string>,
+  detectedPm: PackageManager
+): Promise<DependencyHandleResult> {
+  const pmChoice = await clack.select({
+    message: 'Install dependencies now?',
+    options: [
+      { value: detectedPm, label: `Yes, install with ${detectedPm} (detected)` },
+      ...(['npm', 'pnpm', 'yarn', 'bun'] as const)
+        .filter((pm) => pm !== detectedPm)
+        .map((pm) => ({ value: pm, label: `Yes, install with ${pm}` })),
+      { value: 'skip', label: 'Skip (install manually later)' },
+    ],
+  });
+
+  if (clack.isCancel(pmChoice)) {
+    showManualInstallHint(mergedDeps, detectedPm);
+    return { depsInstalled: false, usedPackageManager: null };
+  }
+
+  if (pmChoice === 'skip') {
+    showManualInstallHint(mergedDeps, detectedPm);
+    return { depsInstalled: false, usedPackageManager: null };
+  }
+
+  const pm = pmChoice as PackageManager;
+
+  // Ensure package.json exists
+  if (!hasProjectPackageJson()) {
+    const created = await ensurePackageJson(mergedDeps, pm);
+    if (!created) {
+      return { depsInstalled: false, usedPackageManager: pm };
+    }
+  }
+
+  // Guard: Still no package.json after prompt
+  if (!hasProjectPackageJson()) {
+    return { depsInstalled: false, usedPackageManager: pm };
+  }
+
+  return installDepsWithAbortSupport(mergedDeps, pm);
+}
+
+/**
+ * Prompt to create package.json if it doesn't exist
+ */
+async function ensurePackageJson(
+  mergedDeps: Record<string, string>,
+  pm: PackageManager
+): Promise<boolean> {
+  clack.log.warn('No package.json found in current directory.');
+  const createPkg = await clack.confirm({
+    message: 'Create a package.json file?',
+  });
+
+  if (clack.isCancel(createPkg) || !createPkg) {
+    showManualInstallHint(mergedDeps, pm);
+    return false;
+  }
+
+  fs.writeFileSync(
+    path.join(process.cwd(), 'package.json'),
+    JSON.stringify({ name: path.basename(process.cwd()), version: '1.0.0', private: true }, null, 2)
+  );
+  clack.log.info('Created package.json');
+  return true;
+}
+
+/**
+ * Install dependencies with abort signal support
+ */
+async function installDepsWithAbortSupport(
+  mergedDeps: Record<string, string>,
+  pm: PackageManager
+): Promise<DependencyHandleResult> {
+  const controller = new AbortController();
+  const sigintHandler = (): void => {
+    controller.abort();
+  };
+  process.on('SIGINT', sigintHandler);
+
+  const depInstallSpinner = clack.spinner();
+  depInstallSpinner.start(`Installing dependencies with ${pm} (${Object.keys(mergedDeps).length} packages)...`);
+
+  const installResult = await installDependencies(mergedDeps, pm, process.cwd(), controller.signal);
+
+  process.off('SIGINT', sigintHandler);
+
+  if (installResult.installed) {
+    depInstallSpinner.stop('Dependencies installed');
+    return { depsInstalled: true, usedPackageManager: pm };
+  }
+
+  depInstallSpinner.stop('Dependency installation failed');
+  clack.log.warn(installResult.error ?? 'Unknown error');
+  showManualInstallHint(mergedDeps, pm);
+  return { depsInstalled: false, usedPackageManager: pm };
+}
+
+// ============================================================================
+// Main Install Function
+// ============================================================================
 
 async function runInstall(source: string | undefined, options: InstallOptions): Promise<void> {
   let tempDirToClean: string | null = null;
@@ -211,52 +686,23 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
   clack.intro(chalk.cyan('skai - AI Agent Skills Package Manager'));
 
   if (!source) {
-    // This shouldn't be reached as the action handler redirects to runManage
     clack.log.error('Please provide a source (GitHub repo, URL, or local path)');
     clack.outro(chalk.red('No source provided'));
     process.exit(EXIT_ERROR);
   }
 
   let tempDir: string | null = null;
-  let skillsBasePath: string;
-  let subpath: string | undefined;
 
   try {
-    const parsed = parseSource(source);
-    clack.log.info(`Source type: ${parsed.type}`);
+    // Step 1: Resolve source to local path
+    const sourceResolution = await resolveSkillsSource(source);
+    tempDir = sourceResolution.tempDir;
+    tempDirToClean = tempDir;
 
-    if (parsed.type === 'local') {
-      if (!parsed.localPath) {
-        throw new Error('Local path not found in parsed source');
-      }
-      if (!fs.existsSync(parsed.localPath)) {
-        throw new Error(`Local path does not exist: ${parsed.localPath}`);
-      }
-      skillsBasePath = parsed.localPath;
-      clack.log.info(`Using local path: ${skillsBasePath}`);
-    } else {
-      const spinner = clack.spinner();
-      spinner.start('Cloning repository...');
-
-      try {
-        if (!parsed.url) {
-          throw new Error('URL not found in parsed source');
-        }
-        tempDir = await cloneRepo(parsed.url, parsed.branch);
-        tempDirToClean = tempDir;
-        skillsBasePath = tempDir;
-        subpath = parsed.subpath;
-        spinner.stop('Repository cloned');
-      } catch (error) {
-        spinner.stop('Failed to clone repository');
-        const formattedError = formatGitError(error as Error, parsed.url || source);
-        throw new Error(formattedError);
-      }
-    }
-
+    // Step 2: Discover skills
     const discoverSpinner = clack.spinner();
     discoverSpinner.start('Discovering skills...');
-    const skills = discoverSkills(skillsBasePath, subpath);
+    const skills = discoverSkills(sourceResolution.skillsBasePath, sourceResolution.subpath);
     discoverSpinner.stop(`Found ${skills.length} skill(s)`);
 
     if (skills.length === 0) {
@@ -266,202 +712,62 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
       return;
     }
 
-    let filteredSkills = skills;
-    if (options.skill && options.skill.length > 0) {
-      filteredSkills = skills.filter((s) => {
-        const skillFilters = options.skill;
-        if (!skillFilters) {
-          return false;
-        }
-        return skillFilters.some((filter) => matchesSkillFilter(s, filter));
-      });
-
-      if (filteredSkills.length === 0) {
-        clack.log.error(`No matching skills found for: ${options.skill.join(', ')}`);
-        clack.log.info(`Available skills: ${skills.map((s) => s.name).join(', ')}`);
-        clack.outro(chalk.red('No matching skills'));
-        return;
-      }
+    // Step 3: Filter skills based on CLI options
+    const filteredSkills = filterSkillsByOptions(skills, options.skill);
+    if (filteredSkills.length === 0) {
+      clack.outro(chalk.red('No matching skills'));
+      return;
     }
 
+    // Display single skill info
     if (filteredSkills.length === 1 && !options.list && !options.json) {
       displaySingleSkill(filteredSkills[0]);
     }
 
+    // Handle --list flag
     if (options.list) {
       clack.log.info(chalk.bold('\nAvailable Skills:'));
       console.log('│');
-
       const tree = buildSkillTree(filteredSkills);
       printSkillTree(tree, 0);
-
       console.log('│');
       clack.outro(chalk.cyan(`${filteredSkills.length} skill(s) available`));
       return;
     }
 
-    let targetAgents: AgentConfig[];
-
-    if (options.agent && options.agent.length > 0) {
-      const invalidAgents: string[] = [];
-      targetAgents = [];
-
-      for (const name of options.agent) {
-        const agent = getAgentByName(name);
-        if (agent) {
-          targetAgents.push(agent);
-        } else {
-          invalidAgents.push(name);
-        }
-      }
-
-      if (invalidAgents.length > 0) {
-        clack.log.warn(`Unknown agent(s): ${invalidAgents.join(', ')}`);
-        clack.log.info(
-          `Available agents: ${getAllAgents()
-            .map((a) => a.name)
-            .join(', ')}`
-        );
-      }
-
-      if (targetAgents.length === 0) {
-        clack.log.error('No valid agents specified');
-        clack.outro(chalk.red('No valid agents'));
-        return;
-      }
-    } else {
-      const detectedAgents = detectInstalledAgents();
-
-      if (detectedAgents.length === 0) {
-        clack.log.warn('No AI agents detected on your system');
-
-        if (!options.yes) {
-          const useAll = await clack.confirm({
-            message: 'Would you like to see all available agents?',
-          });
-
-          if (clack.isCancel(useAll)) {
-            clack.outro(chalk.yellow('Cancelled'));
-            return;
-          }
-
-          if (useAll) {
-            targetAgents = getAllAgents();
-          } else {
-            clack.outro(chalk.yellow('No agents selected'));
-            return;
-          }
-        } else {
-          clack.outro(chalk.yellow('No agents detected'));
-          return;
-        }
-      } else {
-        targetAgents = detectedAgents;
-        clack.log.info(`Detected ${targetAgents.length} agent(s): ${targetAgents.map((a) => a.displayName).join(', ')}`);
-      }
+    // Step 4: Resolve target agents
+    const targetAgents = await resolveTargetAgents(options.agent, options.yes);
+    if (!targetAgents) {
+      clack.outro(chalk.yellow(options.yes ? 'No agents detected' : 'Cancelled'));
+      return;
     }
 
-    let selectedSkills: Skill[];
-
-    if (options.skill && options.skill.length > 0) {
-      selectedSkills = filteredSkills;
-    } else if (options.yes) {
-      selectedSkills = filteredSkills;
-    } else if (filteredSkills.length === 1) {
-      selectedSkills = filteredSkills;
-    } else {
-      const tree = buildSkillTree(filteredSkills);
-      let treeNodes = skillTreeToTreeNodes(tree);
-      treeNodes = flattenSingleCategories(treeNodes);
-
-      try {
-        selectedSkills = await treeSelect(treeNodes);
-        if (selectedSkills.length === 0) {
-          clack.outro(chalk.yellow('No skills selected'));
-          return;
-        }
-      } catch {
-        // treeSelect throws when user cancels with Ctrl+C or Escape
-        clack.outro(chalk.yellow('Cancelled'));
-        return;
-      }
+    // Step 5: Interactive skill selection
+    const selectedSkills = await selectSkillsInteractive(filteredSkills, options);
+    if (!selectedSkills) {
+      clack.outro(chalk.yellow('Cancelled'));
+      return;
     }
 
-    let selectedAgents: AgentConfig[];
-
-    if (options.agent && options.agent.length > 0) {
-      selectedAgents = targetAgents;
-    } else if (options.yes) {
-      selectedAgents = targetAgents;
-    } else if (targetAgents.length === 1) {
-      selectedAgents = targetAgents;
-    } else {
-      const agentChoices = targetAgents.map((a) => ({
-        value: a,
-        label: a.displayName,
-        hint: options.global ? a.globalPath : a.projectPath,
-      }));
-
-      const selected = await clack.multiselect({
-        message: 'Select agents to install to:',
-        options: agentChoices,
-        required: true,
-      });
-
-      if (clack.isCancel(selected)) {
-        clack.outro(chalk.yellow('Cancelled'));
-        return;
-      }
-
-      selectedAgents = selected as AgentConfig[];
+    // Step 6: Interactive agent selection
+    const selectedAgents = await selectAgentsInteractive(targetAgents, options);
+    if (!selectedAgents) {
+      clack.outro(chalk.yellow('Cancelled'));
+      return;
     }
 
-    let isGlobal = options.global;
-
-    if (!options.global && !options.yes) {
-      const scope = await clack.select({
-        message: 'Where would you like to install?',
-        options: [
-          { value: 'project', label: 'Project', hint: 'Install to current project only' },
-          { value: 'global', label: 'Global', hint: 'Install to user home directory' },
-        ],
-      });
-
-      if (clack.isCancel(scope)) {
-        clack.outro(chalk.yellow('Cancelled'));
-        return;
-      }
-
-      isGlobal = scope === 'global';
+    // Step 7: Select installation scope
+    const isGlobal = await selectInstallScope(options.global, options.yes);
+    if (isGlobal === null) {
+      clack.outro(chalk.yellow('Cancelled'));
+      return;
     }
 
-    // Dry-run mode: show what would be installed without making changes
+    const installOptions = { global: isGlobal, yes: options.yes };
+
+    // Step 8: Handle dry-run mode
     if (options.dryRun) {
-      const statuses: SkillInstallStatus[] = [];
-      const installOptions = { global: isGlobal, yes: options.yes };
-
-      for (const skill of selectedSkills) {
-        for (const agent of selectedAgents) {
-          const targetPath = getSkillInstallPath(skill.name, agent, installOptions);
-
-          if (isSkillInstalled(skill, agent, installOptions)) {
-            statuses.push({
-              skillName: skill.name,
-              agentName: agent.displayName,
-              status: 'skipped',
-              path: targetPath,
-              reason: 'already installed',
-            });
-          } else {
-            statuses.push({
-              skillName: skill.name,
-              agentName: agent.displayName,
-              status: 'would-install',
-              path: targetPath,
-            });
-          }
-        }
-      }
+      const { statuses } = performDryRun(selectedSkills, selectedAgents, installOptions);
 
       if (options.json) {
         const jsonOutput = {
@@ -483,6 +789,7 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
       return;
     }
 
+    // Step 9: Confirm installation
     if (!options.yes) {
       const summary = [
         `Skills: ${selectedSkills.map((s) => s.name).join(', ')}`,
@@ -502,63 +809,15 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
       }
     }
 
+    // Step 10: Install skills
     const installSpinner = clack.spinner();
     installSpinner.start('Installing skills...');
-
-    const results: { success: number; failed: number; skipped: number } = {
-      success: 0,
-      failed: 0,
-      skipped: 0,
-    };
-
-    const installOptions = { global: isGlobal, yes: options.yes };
-    const installedSkillNames: string[] = [];
-    const statuses: SkillInstallStatus[] = [];
-
-    for (const skill of selectedSkills) {
-      for (const agent of selectedAgents) {
-        const targetPath = getSkillInstallPath(skill.name, agent, installOptions);
-
-        if (isSkillInstalled(skill, agent, installOptions)) {
-          results.skipped++;
-          statuses.push({
-            skillName: skill.name,
-            agentName: agent.displayName,
-            status: 'skipped',
-            path: targetPath,
-            reason: 'already installed',
-          });
-          continue;
-        }
-
-        const result = installSkillForAgent(skill, agent, installOptions);
-
-        if (result.success) {
-          results.success++;
-          statuses.push({
-            skillName: skill.name,
-            agentName: agent.displayName,
-            status: 'installed',
-            path: result.targetPath,
-          });
-          if (!installedSkillNames.includes(skill.name)) {
-            installedSkillNames.push(skill.name);
-          }
-        } else {
-          results.failed++;
-          statuses.push({
-            skillName: skill.name,
-            agentName: agent.displayName,
-            status: 'failed',
-            reason: result.error,
-          });
-          if (!options.json) {
-            clack.log.warn(`Failed to install ${skill.name} to ${agent.displayName}: ${result.error}`);
-          }
-        }
-      }
-    }
-
+    const { results, statuses, installedSkillNames } = installSkillsToAgents(
+      selectedSkills,
+      selectedAgents,
+      installOptions,
+      options.json
+    );
     installSpinner.stop(`Installed ${results.success} skill(s)`);
 
     // Show per-skill status
@@ -566,9 +825,9 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
       formatInstallStatus(statuses, false);
     }
 
+    // Step 11: Handle dependencies
     const depSpinner = clack.spinner();
     depSpinner.start('Scanning for dependencies...');
-
     const skillDeps: SkillDependencies[] = [];
     for (const skill of selectedSkills) {
       const deps = extractDependencies(skill.path);
@@ -576,142 +835,21 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
         skillDeps.push(deps);
       }
     }
-
     depSpinner.stop(
       skillDeps.length > 0
         ? `Found dependencies in ${skillDeps.length} skill(s)`
         : 'No dependencies found'
     );
 
-    let depsInstalled = false;
-    let usedPackageManager: PackageManager | null = null;
+    const depResult = await handleDependencies(selectedSkills, options);
 
-    if (skillDeps.length > 0) {
-      const mergedDeps = mergeDependencies(skillDeps);
-      const detectedPm = detectPackageManager();
-      usedPackageManager = detectedPm;
-
-      if (options.json) {
-        if (hasProjectPackageJson()) {
-          const installResult = await installDependencies(mergedDeps, detectedPm);
-          depsInstalled = installResult.installed;
-        }
-      } else {
-        clack.log.info(chalk.bold('\n📦 Skills with dependencies:'));
-        for (const line of formatDependencySummary(skillDeps)) {
-          clack.log.info(`   ${line}`);
-        }
-
-        const conflicts = checkConflicts(skillDeps);
-        if (conflicts.length > 0) {
-          clack.log.warn(chalk.yellow('\n⚠ Dependency conflicts detected:'));
-          for (const conflict of conflicts) {
-            clack.log.warn(
-              `   • ${conflict.packageName}: skill requires ${conflict.skillVersion}, project has ${conflict.projectVersion}`
-            );
-          }
-        }
-
-        const isInteractive = process.stdout.isTTY && !options.yes;
-
-        if (isInteractive) {
-          const pmChoice = await clack.select({
-            message: 'Install dependencies now?',
-            options: [
-              { value: detectedPm, label: `Yes, install with ${detectedPm} (detected)` },
-              ...(['npm', 'pnpm', 'yarn', 'bun'] as const)
-                .filter((pm) => pm !== detectedPm)
-                .map((pm) => ({ value: pm, label: `Yes, install with ${pm}` })),
-              { value: 'skip', label: 'Skip (install manually later)' },
-            ],
-          });
-
-          if (clack.isCancel(pmChoice)) {
-            showManualInstallHint(mergedDeps, detectedPm);
-            clack.outro(chalk.yellow('Cancelled'));
-            return;
-          }
-
-          if (pmChoice === 'skip') {
-            showManualInstallHint(mergedDeps, detectedPm);
-          } else {
-            const pm = pmChoice as PackageManager;
-            usedPackageManager = pm;
-
-            if (!hasProjectPackageJson()) {
-              clack.log.warn('No package.json found in current directory.');
-              const createPkg = await clack.confirm({
-                message: 'Create a package.json file?',
-              });
-
-              if (clack.isCancel(createPkg) || !createPkg) {
-                showManualInstallHint(mergedDeps, pm);
-              } else {
-                fs.writeFileSync(
-                  path.join(process.cwd(), 'package.json'),
-                  JSON.stringify({ name: path.basename(process.cwd()), version: '1.0.0', private: true }, null, 2)
-                );
-                clack.log.info('Created package.json');
-              }
-            }
-
-            if (hasProjectPackageJson()) {
-              const controller = new AbortController();
-              const sigintHandler = (): void => {
-                controller.abort();
-              };
-              process.on('SIGINT', sigintHandler);
-
-              const depInstallSpinner = clack.spinner();
-              depInstallSpinner.start(
-                `Installing dependencies with ${pm} (${Object.keys(mergedDeps).length} packages)...`
-              );
-
-              const installResult = await installDependencies(mergedDeps, pm, process.cwd(), controller.signal);
-
-              process.off('SIGINT', sigintHandler);
-
-              if (installResult.installed) {
-                depInstallSpinner.stop('Dependencies installed');
-                depsInstalled = true;
-              } else {
-                depInstallSpinner.stop('Dependency installation failed');
-                clack.log.warn(installResult.error ?? 'Unknown error');
-                showManualInstallHint(mergedDeps, pm);
-              }
-            }
-          }
-        } else {
-          if (!hasProjectPackageJson()) {
-            clack.log.warn('No package.json found. Skipping dependency installation.');
-            showManualInstallHint(mergedDeps, detectedPm);
-          } else {
-            const depInstallSpinner = clack.spinner();
-            depInstallSpinner.start(
-              `Installing dependencies with ${detectedPm} (${Object.keys(mergedDeps).length} packages)...`
-            );
-
-            const installResult = await installDependencies(mergedDeps, detectedPm);
-
-            if (installResult.installed) {
-              depInstallSpinner.stop('Dependencies installed');
-              depsInstalled = true;
-            } else {
-              depInstallSpinner.stop('Dependency installation failed');
-              clack.log.warn(installResult.error ?? 'Unknown error');
-              showManualInstallHint(mergedDeps, detectedPm);
-            }
-          }
-        }
-      }
-    }
-
+    // Step 12: Output results
     if (options.json) {
       const jsonOutput: JsonOutput = {
         skills_installed: installedSkillNames,
         dependencies: Object.fromEntries(skillDeps.map((s) => [s.skillName, s.dependencies])),
-        dependencies_installed: depsInstalled,
-        package_manager: usedPackageManager,
+        dependencies_installed: depResult.depsInstalled,
+        package_manager: depResult.usedPackageManager,
       };
       console.log(JSON.stringify(jsonOutput, null, 2));
       return;
@@ -724,7 +862,7 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
 
     if (results.success > 0) {
       const nextSteps: string[] = ['Restart your AI agent to load the new skills.'];
-      if (depsInstalled) {
+      if (depResult.depsInstalled) {
         nextSteps.push('Dependencies were installed to your project.');
       }
       clack.note(nextSteps.join('\n'), 'Next steps');
@@ -732,7 +870,7 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
 
     clack.outro(resultParts.join(', ') || chalk.green('Done'));
   } catch (error) {
-    clack.log.error(error instanceof Error ? error.message : String(error));
+    clack.log.error(getErrorMessage(error));
     clack.outro(chalk.red('Installation failed'));
     process.exit(EXIT_ERROR);
   } finally {
@@ -750,12 +888,8 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
   }
 }
 
-interface UninstallOptions {
-  global: boolean;
-  agent?: string[];
-  yes: boolean;
-  json: boolean;
-}
+// Use the new typed options
+type UninstallOptions = UninstallCLIOptions;
 
 async function runUninstall(skillNames: string[], options: UninstallOptions): Promise<void> {
   clack.intro(chalk.cyan('skai uninstall'));
@@ -872,11 +1006,8 @@ async function runUninstall(skillNames: string[], options: UninstallOptions): Pr
   clack.outro(resultParts.join(', ') || chalk.green('Done'));
 }
 
-interface ListOptions {
-  global: boolean;
-  agent?: string[];
-  json: boolean;
-}
+// Use the new typed options
+type ListOptions = ListCLIOptions;
 
 async function runList(options: ListOptions): Promise<void> {
   if (!options.json) {
@@ -968,12 +1099,8 @@ async function runList(options: ListOptions): Promise<void> {
   clack.outro(chalk.cyan(`${allSkills.length} skill(s) installed`));
 }
 
-interface UpdateOptions {
-  global: boolean;
-  agent?: string[];
-  yes: boolean;
-  json: boolean;
-}
+// Use the new typed options
+type UpdateOptions = UpdateCLIOptions;
 
 async function runUpdate(_skillNames: string[], _options: UpdateOptions): Promise<void> {
   clack.intro(chalk.cyan('skai update'));

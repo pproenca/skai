@@ -8,9 +8,6 @@ import {
   LAYOUT,
   S_BAR,
   S_BAR_END,
-  S_CHECKBOX_ACTIVE,
-  S_CHECKBOX_SELECTED,
-  S_CHECKBOX_INACTIVE,
   S_BOX_TOP_LEFT,
   S_BOX_TOP_RIGHT,
   S_BOX_BOTTOM_LEFT,
@@ -20,6 +17,7 @@ import {
   S_SEARCH_ICON,
   symbol,
   createSeparator,
+  getCheckboxSymbol,
 } from "./ui-constants.js";
 
 export interface FlatNode {
@@ -428,16 +426,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
         const isActive = globalIndex === this.listCursor;
         const isSelected = this.selectedValues.has(opt.value);
 
-        let checkbox: string;
-        if (isActive && isSelected) {
-          checkbox = S_CHECKBOX_SELECTED;
-        } else if (isSelected) {
-          checkbox = S_CHECKBOX_SELECTED;
-        } else if (isActive) {
-          checkbox = S_CHECKBOX_ACTIVE;
-        } else {
-          checkbox = S_CHECKBOX_INACTIVE;
-        }
+        const checkbox = getCheckboxSymbol(isSelected, isActive);
 
         const hint = opt.option.hint || "";
 
@@ -870,14 +859,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
         const isActive = globalIndex === cursorIdx;
         const isSelected = this.selectedValues.has(item.value);
 
-        let checkbox: string;
-        if (isSelected) {
-          checkbox = S_CHECKBOX_SELECTED;
-        } else if (isActive) {
-          checkbox = S_CHECKBOX_ACTIVE;
-        } else {
-          checkbox = S_CHECKBOX_INACTIVE;
-        }
+        const checkbox = getCheckboxSymbol(isSelected, isActive);
 
         const hint = item.option.hint || "";
 
@@ -1231,11 +1213,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             this.selectedValues.has(opt.value)
           ).length;
           const groupSelected = this.isGroupSelected(item.name);
-          const checkbox = groupSelected
-            ? S_CHECKBOX_SELECTED
-            : isActive
-              ? S_CHECKBOX_ACTIVE
-              : S_CHECKBOX_INACTIVE;
+          const checkbox = getCheckboxSymbol(groupSelected, isActive);
           const label = this.searchTerm
             ? highlightMatch(item.name, this.searchTerm)
             : item.name;
@@ -1249,14 +1227,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
           lines.push(`${color.cyan(S_BAR)}  ${line}`);
         } else {
           const isSelected = this.selectedValues.has(item.option.value);
-          let checkbox: string;
-          if (isSelected) {
-            checkbox = S_CHECKBOX_SELECTED;
-          } else if (isActive) {
-            checkbox = S_CHECKBOX_ACTIVE;
-          } else {
-            checkbox = S_CHECKBOX_INACTIVE;
-          }
+          const checkbox = getCheckboxSymbol(isSelected, isActive);
 
           const hint = item.option.option.hint || "";
 

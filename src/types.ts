@@ -68,6 +68,56 @@ export interface InstallOptions {
   yes: boolean;
 }
 
+// ============================================================================
+// CLI Options (Split by command for type safety)
+// ============================================================================
+
+/**
+ * Base options shared across all CLI commands
+ */
+export interface BaseOptions {
+  global: boolean;
+  json: boolean;
+}
+
+/**
+ * Options for the install command
+ */
+export interface InstallCLIOptions extends BaseOptions {
+  agent?: string[];
+  skill?: string[];
+  list: boolean;
+  yes: boolean;
+  dryRun: boolean;
+}
+
+/**
+ * Options for the uninstall command
+ */
+export interface UninstallCLIOptions extends BaseOptions {
+  agent?: string[];
+  yes: boolean;
+}
+
+/**
+ * Options for the list command
+ */
+export interface ListCLIOptions extends BaseOptions {
+  agent?: string[];
+}
+
+/**
+ * Options for the update command
+ */
+export interface UpdateCLIOptions extends BaseOptions {
+  agent?: string[];
+  yes: boolean;
+}
+
+/**
+ * @deprecated Use specific command options instead (InstallCLIOptions, etc.)
+ * Kept for backward compatibility
+ */
 export interface CLIOptions {
   global: boolean;
   agent?: string[];

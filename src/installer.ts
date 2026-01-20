@@ -1,9 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Skill, AgentConfig, InstallResult, InstallOptions } from "./types.js";
-
-// Files to exclude from copying
-const EXCLUDE_FILES = new Set(["README.md", "readme.md", "metadata.json"]);
+import { EXCLUDE_FILES, DISABLED_SUFFIX } from "./config.js";
 
 function sanitizeName(name: string): string {
   // Remove path separators, null bytes, and leading/trailing dots
@@ -205,8 +203,6 @@ export function getSkillInstallPath(
   const basePath = options.global ? agent.globalPath : path.join(process.cwd(), agent.projectPath);
   return path.join(basePath, sanitizeName(skillName));
 }
-
-const DISABLED_SUFFIX = ".disabled";
 
 export interface ManagedSkill {
   name: string;
