@@ -452,8 +452,13 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
   }
 
   private handleKey(key: string): void {
-    // Ignore Tab and Space - handled by cursor events
-    if (key === "\t" || key === " ") {
+    // Tab key switches to next tab
+    if (key === "\t") {
+      this.tabNav.navigateRight();
+      return;
+    }
+    // Space is handled by cursor events
+    if (key === " ") {
       return;
     }
     if (key === "\x7f" || key === "\b") {

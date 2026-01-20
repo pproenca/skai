@@ -74,7 +74,16 @@ class SkillManagerPrompt extends Prompt {
       changes: new Map(),
     };
 
+    this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+  }
+
+  private handleKey(key: string): void {
+    // Tab key switches to next tab
+    if (key === "\t") {
+      this.tabNav.navigateRight();
+      return;
+    }
   }
 
   private handleCursor(
