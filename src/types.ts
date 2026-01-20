@@ -125,3 +125,14 @@ export interface SkillInstallStatus {
   path?: string;
   reason?: string;
 }
+
+export interface Tab {
+  id: string;
+  label: string;
+  badge?: number;
+}
+
+export interface TabContentState {
+  cursor: number;
+  scrollOffset: number;
+}

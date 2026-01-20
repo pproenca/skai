@@ -214,6 +214,7 @@ export interface ManagedSkill {
   agent: AgentConfig;
   scope: "project" | "global";
   enabled: boolean;
+  category?: string[];
 }
 
 export function listManagedSkills(

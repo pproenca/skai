@@ -2,6 +2,8 @@ import * as p from "@clack/prompts";
 import { Prompt, isCancel } from "@clack/core";
 import color from "picocolors";
 import type { Skill, TreeNode } from "./types.js";
+import { TabNavigation } from "./tabbed-prompt.js";
+import { createCategoryTabs } from "./tab-bar.js";
 
 export interface FlatNode {
   node: TreeNode;
@@ -400,6 +402,264 @@ function buildGroupedSearchableOptions(
   }));
 }
 
+interface TabbedGroupMultiSelectOptions<T> {
+  message: string;
+  groups: Record<string, SkillOption[]>;
+  initialValues?: T[];
+  maxItems?: number;
+}
+
+/**
+ * Tabbed group multi-select prompt with search
+ * Shows horizontal tabs for top-level categories
+ */
+class TabbedGroupMultiSelectPrompt<T> extends Prompt {
+  private searchTerm = "";
+  private selectedValues: Set<T>;
+  private readonly groupedOptions: GroupedSearchableOptions<T>[];
+  private readonly promptMessage: string;
+  private tabNav: TabNavigation;
+
+  constructor(opts: TabbedGroupMultiSelectOptions<T>) {
+    super(
+      {
+        render: () => this.renderPrompt(),
+      },
+      false
+    );
+    this.groupedOptions = buildGroupedSearchableOptions(
+      opts.groups
+    ) as GroupedSearchableOptions<T>[];
+    this.selectedValues = new Set(opts.initialValues ?? []);
+    this.promptMessage = opts.message;
+
+    // Create tabs from group names
+    const groupNames = Object.keys(opts.groups).sort();
+    const tabs = createCategoryTabs(groupNames);
+
+    this.tabNav = new TabNavigation({
+      tabs,
+      maxVisibleItems: opts.maxItems ?? MAX_VISIBLE_ITEMS,
+      tabBarWidth: 50,
+    });
+
+    this.on("key", (key) => this.handleKey(key ?? ""));
+    this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+  }
+
+  private handleKey(key: string): void {
+    if (key === "\x7f" || key === "\b") {
+      if (this.searchTerm.length > 0) {
+        this.searchTerm = this.searchTerm.slice(0, -1);
+      }
+      return;
+    }
+    if (key.length === 1 && /[a-z0-9\-_./\s]/i.test(key)) {
+      this.searchTerm += key;
+    }
+  }
+
+  private handleCursor(
+    action: "up" | "down" | "left" | "right" | "space" | "enter" | "cancel"
+  ): void {
+    switch (action) {
+      case "left":
+        this.tabNav.navigateLeft();
+        break;
+      case "right":
+        this.tabNav.navigateRight();
+        break;
+      case "up":
+        this.tabNav.navigateContent("up", this.getFilteredItems().length);
+        break;
+      case "down":
+        this.tabNav.navigateContent("down", this.getFilteredItems().length);
+        break;
+      case "space":
+        this.toggleSelection();
+        break;
+      case "cancel":
+        if (this.searchTerm) {
+          this.searchTerm = "";
+        }
+        break;
+    }
+  }
+
+  private getFilteredItems(): SearchableGroupOption<T>[] {
+    const activeTab = this.tabNav.getActiveTab();
+    const term = this.searchTerm.toLowerCase();
+
+    // Get items based on active tab
+    let items: SearchableGroupOption<T>[];
+    if (activeTab.id === "all") {
+      items = this.groupedOptions.flatMap((g) => g.options);
+    } else {
+      const group = this.groupedOptions.find(
+        (g) => g.groupName.toLowerCase() === activeTab.id
+      );
+      items = group?.options ?? [];
+    }
+
+    // Filter by search term
+    if (term) {
+      items = items.filter((opt) => opt.searchableText.includes(term));
+    }
+
+    return items;
+  }
+
+  private toggleSelection(): void {
+    const items = this.getFilteredItems();
+    const tabState = this.tabNav.getActiveTabState();
+    const current = items[tabState.cursor];
+    if (!current) return;
+
+    if (this.selectedValues.has(current.value)) {
+      this.selectedValues.delete(current.value);
+    } else {
+      this.selectedValues.add(current.value);
+    }
+  }
+
+  private getTotalOptionCount(): number {
+    return this.groupedOptions.reduce((sum, g) => sum + g.options.length, 0);
+  }
+
+  private renderPrompt(): string {
+    const lines: string[] = [];
+    const total = this.getTotalOptionCount();
+    const filteredItems = this.getFilteredItems();
+    const filtered = filteredItems.length;
+
+    lines.push(`${color.gray(S_BAR)}`);
+    lines.push(`${symbol(this.state)}  ${this.promptMessage}`);
+
+    if (this.state === "submit") {
+      const selectedLabels = this.groupedOptions
+        .flatMap((g) => g.options)
+        .filter((opt) => this.selectedValues.has(opt.value))
+        .map((opt) => opt.option.label);
+      lines.push(
+        `${color.gray(S_BAR)}  ${color.dim(selectedLabels.join(", ") || "none")}`
+      );
+      return lines.join("\n");
+    }
+
+    if (this.state === "cancel") {
+      const selectedLabels = this.groupedOptions
+        .flatMap((g) => g.options)
+        .filter((opt) => this.selectedValues.has(opt.value))
+        .map((opt) => color.strikethrough(color.dim(opt.option.label)));
+      if (selectedLabels.length > 0) {
+        lines.push(`${color.gray(S_BAR)}  ${selectedLabels.join(", ")}`);
+      }
+      lines.push(`${color.gray(S_BAR)}`);
+      return lines.join("\n");
+    }
+
+    // Render tab bar
+    const tabBarLines = this.tabNav.renderTabBar();
+    for (const line of tabBarLines) {
+      lines.push(`${color.cyan(S_BAR)}  ${line}`);
+    }
+
+    const selectedCount = this.selectedValues.size;
+    const countText =
+      this.searchTerm || filtered !== total
+        ? `(${filtered} of ${total} skills)`
+        : `(${total} skills)`;
+    const selectedText =
+      selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
+
+    const cursor = this.state === "active" ? color.inverse(" ") : "_";
+    lines.push(
+      `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
+    );
+    lines.push(
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
+    );
+    lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(50))}`);
+
+    if (filteredItems.length === 0) {
+      lines.push(
+        `${color.cyan(S_BAR)}  ${color.dim(`No skills match "${this.searchTerm}"`)}`
+      );
+    } else {
+      const tabState = this.tabNav.getActiveTabState();
+      const { cursor: cursorIdx, scrollOffset } = tabState;
+
+      const aboveCount = scrollOffset;
+      const belowCount = Math.max(
+        0,
+        filteredItems.length - scrollOffset - this.tabNav.maxVisibleItems
+      );
+
+      if (aboveCount > 0) {
+        lines.push(
+          `${color.cyan(S_BAR)}  ${color.dim(`↑ ${aboveCount} more above`)}`
+        );
+      }
+
+      const visibleItems = filteredItems.slice(
+        scrollOffset,
+        scrollOffset + this.tabNav.maxVisibleItems
+      );
+
+      for (let i = 0; i < visibleItems.length; i++) {
+        const item = visibleItems[i];
+        const globalIndex = scrollOffset + i;
+        const isActive = globalIndex === cursorIdx;
+        const isSelected = this.selectedValues.has(item.value);
+
+        let checkbox: string;
+        if (isSelected) {
+          checkbox = S_CHECKBOX_SELECTED;
+        } else if (isActive) {
+          checkbox = S_CHECKBOX_ACTIVE;
+        } else {
+          checkbox = S_CHECKBOX_INACTIVE;
+        }
+
+        const hint = item.option.hint || "";
+        const groupHint = this.tabNav.getActiveTab().id === "all"
+          ? color.dim(`[${item.group}] `)
+          : "";
+
+        // Pad label to align summaries in a clean column
+        const paddedLabel = item.option.label.padEnd(MAX_LABEL_WIDTH);
+        const highlightedPaddedLabel = this.searchTerm
+          ? highlightMatch(paddedLabel, this.searchTerm)
+          : paddedLabel;
+
+        const line = isActive
+          ? `${checkbox} ${groupHint}${highlightedPaddedLabel} ${color.dim(hint)}`
+          : `${checkbox} ${groupHint}${color.dim(paddedLabel)} ${color.dim(hint)}`;
+
+        lines.push(`${color.cyan(S_BAR)}  ${line}`);
+      }
+
+      if (belowCount > 0) {
+        lines.push(
+          `${color.cyan(S_BAR)}  ${color.dim(`↓ ${belowCount} more below`)}`
+        );
+      }
+    }
+
+    lines.push(`${color.cyan(S_BAR_END)}`);
+    return lines.join("\n");
+  }
+
+  async run(): Promise<T[] | symbol> {
+    const result = await this.prompt();
+    if (isCancel(result)) {
+      return result;
+    }
+    return Array.from(this.selectedValues);
+  }
+}
+
+// Keep old SearchableGroupMultiSelectPrompt for backward compatibility
 interface SearchableGroupMultiSelectOptions<T> {
   message: string;
   groups: Record<string, SkillOption[]>;
@@ -737,10 +997,10 @@ async function searchableMultiselect(
   return result;
 }
 
-async function searchableGroupMultiselect(
+async function tabbedGroupMultiselect(
   groups: Record<string, SkillOption[]>
 ): Promise<Skill[]> {
-  const prompt = new SearchableGroupMultiSelectPrompt<Skill>({
+  const prompt = new TabbedGroupMultiSelectPrompt<Skill>({
     message: "Select skills to install:",
     groups,
   });
@@ -819,7 +1079,7 @@ function addChildrenToGroup(
 
 /**
  * Interactive tree selection using @clack/prompts multiselect or groupMultiselect
- * based on whether skills are categorized. Uses searchable prompts for large lists.
+ * based on whether skills are categorized. Uses tabbed prompts for large lists with groups.
  */
 export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
   // Check if stdin supports raw mode (required for interactive input)
@@ -853,10 +1113,10 @@ export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
     return selected as Skill[];
   }
 
-  // Case 2: Only categorized skills → use groupMultiselect
+  // Case 2: Only categorized skills → use tabbed group multiselect
   if (hasGroups && !hasUncategorized) {
     if (useSearch) {
-      return searchableGroupMultiselect(groups);
+      return tabbedGroupMultiselect(groups);
     }
 
     const selected = await p.groupMultiselect({
@@ -871,13 +1131,13 @@ export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
     return selected as Skill[];
   }
 
-  // Case 3: Mixed → use groupMultiselect with uncategorized in "Other" group
+  // Case 3: Mixed → use tabbed group multiselect with uncategorized in "Other" group
   if (hasGroups && hasUncategorized) {
     const mixedGroups = { ...groups };
     mixedGroups["Other"] = uncategorized;
 
     if (useSearch) {
-      return searchableGroupMultiselect(mixedGroups);
+      return tabbedGroupMultiselect(mixedGroups);
     }
 
     const selected = await p.groupMultiselect({

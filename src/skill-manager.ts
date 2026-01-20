@@ -4,6 +4,8 @@ import type { AgentConfig } from "./types.js";
 import type { ManagedSkill, ToggleResult } from "./installer.js";
 import { listManagedSkills, toggleSkill } from "./installer.js";
 import { detectInstalledAgents, getAllAgents } from "./agents.js";
+import { TabNavigation } from "./tabbed-prompt.js";
+import { createCategoryTabs, extractCategories } from "./tab-bar.js";
 
 const MAX_VISIBLE_ITEMS = 12;
 const MAX_NAME_WIDTH = 25;
@@ -15,15 +17,16 @@ const S_STEP_SUBMIT = color.green("◇");
 const S_BAR = color.gray("│");
 const S_BAR_END = color.gray("└");
 
-const S_TOGGLE_ON = color.green("◼");
-const S_TOGGLE_OFF = color.dim("◻");
-const S_TOGGLE_ACTIVE_ON = color.green("◼");
-const S_TOGGLE_ACTIVE_OFF = color.cyan("◻");
+// Toggle states with color coding per plan spec
+const S_TOGGLE_ENABLED = color.green("◼"); // Currently enabled
+const S_TOGGLE_DISABLED = color.dim("◻"); // Currently disabled
+const S_TOGGLE_PENDING_DISABLE = color.red("◻"); // User unchecked enabled skill
+const S_TOGGLE_PENDING_ENABLE = color.green("◼"); // User checked disabled skill
+const S_TOGGLE_ACTIVE = color.cyan("◻"); // Active cursor on disabled
+const S_TOGGLE_ACTIVE_ENABLED = color.green("◼"); // Active cursor on enabled
 
 interface SkillManagerState {
   skills: ManagedSkill[];
-  cursor: number;
-  scrollOffset: number;
   changes: Map<string, boolean>; // skill path -> new enabled state
 }
 
@@ -46,7 +49,7 @@ function getSkillKey(skill: ManagedSkill): string {
 
 class SkillManagerPrompt extends Prompt {
   private state_data: SkillManagerState;
-  private readonly maxItems: number;
+  private tabNav: TabNavigation;
 
   constructor(skills: ManagedSkill[]) {
     super(
@@ -56,13 +59,20 @@ class SkillManagerPrompt extends Prompt {
       false
     );
 
+    // Create tabs from categories
+    const categories = extractCategories(skills);
+    const tabs = createCategoryTabs(categories);
+
+    this.tabNav = new TabNavigation({
+      tabs,
+      maxVisibleItems: MAX_VISIBLE_ITEMS,
+      tabBarWidth: 50,
+    });
+
     this.state_data = {
       skills,
-      cursor: 0,
-      scrollOffset: 0,
       changes: new Map(),
     };
-    this.maxItems = MAX_VISIBLE_ITEMS;
 
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
   }
@@ -71,16 +81,17 @@ class SkillManagerPrompt extends Prompt {
     action: "up" | "down" | "left" | "right" | "space" | "enter" | "cancel"
   ): void {
     switch (action) {
+      case "left":
+        this.tabNav.navigateLeft();
+        break;
+      case "right":
+        this.tabNav.navigateRight();
+        break;
       case "up":
-        this.state_data.cursor = Math.max(0, this.state_data.cursor - 1);
-        this.adjustScroll();
+        this.tabNav.navigateContent("up", this.getFilteredSkills().length);
         break;
       case "down":
-        this.state_data.cursor = Math.min(
-          this.state_data.skills.length - 1,
-          this.state_data.cursor + 1
-        );
-        this.adjustScroll();
+        this.tabNav.navigateContent("down", this.getFilteredSkills().length);
         break;
       case "space":
         this.toggleCurrent();
@@ -88,16 +99,23 @@ class SkillManagerPrompt extends Prompt {
     }
   }
 
-  private adjustScroll(): void {
-    if (this.state_data.cursor < this.state_data.scrollOffset) {
-      this.state_data.scrollOffset = this.state_data.cursor;
-    } else if (this.state_data.cursor >= this.state_data.scrollOffset + this.maxItems) {
-      this.state_data.scrollOffset = this.state_data.cursor - this.maxItems + 1;
+  private getFilteredSkills(): ManagedSkill[] {
+    const activeTab = this.tabNav.getActiveTab();
+
+    if (activeTab.id === "all") {
+      return this.state_data.skills;
     }
+
+    return this.state_data.skills.filter((skill) => {
+      const topCategory = skill.category?.[0]?.toLowerCase();
+      return topCategory === activeTab.id;
+    });
   }
 
   private toggleCurrent(): void {
-    const skill = this.state_data.skills[this.state_data.cursor];
+    const filteredSkills = this.getFilteredSkills();
+    const tabState = this.tabNav.getActiveTabState();
+    const skill = filteredSkills[tabState.cursor];
     if (!skill) return;
 
     const key = getSkillKey(skill);
@@ -115,9 +133,32 @@ class SkillManagerPrompt extends Prompt {
       : skill.enabled;
   }
 
+  private getToggleSymbol(
+    skill: ManagedSkill,
+    isActive: boolean
+  ): string {
+    const effectiveState = this.getEffectiveState(skill);
+    const wasChanged = this.state_data.changes.has(getSkillKey(skill));
+
+    if (isActive) {
+      return effectiveState ? S_TOGGLE_ACTIVE_ENABLED : S_TOGGLE_ACTIVE;
+    }
+
+    if (wasChanged) {
+      // State changed from original
+      if (effectiveState && !skill.enabled) {
+        return S_TOGGLE_PENDING_ENABLE; // Was disabled, now will be enabled
+      } else if (!effectiveState && skill.enabled) {
+        return S_TOGGLE_PENDING_DISABLE; // Was enabled, now will be disabled
+      }
+    }
+
+    return effectiveState ? S_TOGGLE_ENABLED : S_TOGGLE_DISABLED;
+  }
+
   private renderPrompt(): string {
     const lines: string[] = [];
-    const { skills, cursor, scrollOffset, changes } = this.state_data;
+    const { skills, changes } = this.state_data;
 
     lines.push(`${color.gray(S_BAR)}`);
     lines.push(`${symbol(this.state)}  Manage installed skills`);
@@ -146,6 +187,12 @@ class SkillManagerPrompt extends Prompt {
       return lines.join("\n");
     }
 
+    // Render tab bar
+    const tabBarLines = this.tabNav.renderTabBar();
+    for (const line of tabBarLines) {
+      lines.push(`${color.cyan(S_BAR)}  ${line}`);
+    }
+
     const changeCount = changes.size;
     const changeText = changeCount > 0
       ? color.yellow(` • ${changeCount} pending change(s)`)
@@ -156,41 +203,34 @@ class SkillManagerPrompt extends Prompt {
     );
     lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(50))}`);
 
-    // Header row
+    // Header row - removed STATUS column
     const headerName = "SKILL".padEnd(MAX_NAME_WIDTH);
     const headerAgent = "AGENT".padEnd(MAX_AGENT_WIDTH);
-    const headerScope = "SCOPE".padEnd(8);
-    const headerStatus = "STATUS";
+    const headerScope = "SCOPE";
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("   " + headerName + headerAgent + headerScope + headerStatus)}`
+      `${color.cyan(S_BAR)}  ${color.dim("   " + headerName + headerAgent + headerScope)}`
     );
 
+    const filteredSkills = this.getFilteredSkills();
+    const tabState = this.tabNav.getActiveTabState();
+    const { cursor, scrollOffset } = tabState;
+
     const aboveCount = scrollOffset;
-    const belowCount = Math.max(0, skills.length - scrollOffset - this.maxItems);
+    const belowCount = Math.max(0, filteredSkills.length - scrollOffset - this.tabNav.maxVisibleItems);
 
     if (aboveCount > 0) {
       lines.push(`${color.cyan(S_BAR)}  ${color.dim(`↑ ${aboveCount} more above`)}`);
     }
 
-    const visibleSkills = skills.slice(scrollOffset, scrollOffset + this.maxItems);
+    const visibleSkills = filteredSkills.slice(scrollOffset, scrollOffset + this.tabNav.maxVisibleItems);
 
     for (let i = 0; i < visibleSkills.length; i++) {
       const skill = visibleSkills[i];
       const globalIndex = scrollOffset + i;
       const isActive = globalIndex === cursor;
-      const enabled = this.getEffectiveState(skill);
       const wasChanged = changes.has(getSkillKey(skill));
 
-      let toggle: string;
-      if (isActive && enabled) {
-        toggle = S_TOGGLE_ACTIVE_ON;
-      } else if (isActive && !enabled) {
-        toggle = S_TOGGLE_ACTIVE_OFF;
-      } else if (enabled) {
-        toggle = S_TOGGLE_ON;
-      } else {
-        toggle = S_TOGGLE_OFF;
-      }
+      const toggle = this.getToggleSymbol(skill, isActive);
 
       const name = skill.name.length > MAX_NAME_WIDTH
         ? skill.name.slice(0, MAX_NAME_WIDTH - 2) + ".."
@@ -198,19 +238,22 @@ class SkillManagerPrompt extends Prompt {
       const agent = skill.agent.displayName.length > MAX_AGENT_WIDTH
         ? skill.agent.displayName.slice(0, MAX_AGENT_WIDTH - 2) + ".."
         : skill.agent.displayName.padEnd(MAX_AGENT_WIDTH);
-      const scope = skill.scope.padEnd(8);
-      const status = enabled ? "enabled" : "disabled";
+      const scope = skill.scope;
       const changedMarker = wasChanged ? color.yellow(" *") : "";
 
       const line = isActive
-        ? `${toggle} ${name}${agent}${scope}${status}${changedMarker}`
-        : `${toggle} ${color.dim(name)}${color.dim(agent)}${color.dim(scope)}${color.dim(status)}${changedMarker}`;
+        ? `${toggle} ${name}${agent}${scope}${changedMarker}`
+        : `${toggle} ${color.dim(name)}${color.dim(agent)}${color.dim(scope)}${changedMarker}`;
 
       lines.push(`${color.cyan(S_BAR)}  ${line}`);
     }
 
     if (belowCount > 0) {
       lines.push(`${color.cyan(S_BAR)}  ${color.dim(`↓ ${belowCount} more below`)}`);
+    }
+
+    if (filteredSkills.length === 0) {
+      lines.push(`${color.cyan(S_BAR)}  ${color.dim("No skills in this category")}`);
     }
 
     lines.push(`${color.cyan(S_BAR_END)}`);
