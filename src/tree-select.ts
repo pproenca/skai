@@ -1480,7 +1480,7 @@ export async function treeSelect(nodes: TreeNode[]): Promise<Skill[]> {
   return [];
 }
 
-// Export for testing
+// Export for testing and shared utilities
 export {
   categorizeNodes,
   addChildrenToGroup,
@@ -1488,4 +1488,6 @@ export {
   highlightMatch,
   buildSearchableOptions,
   SEARCH_THRESHOLD,
+  MAX_SEARCH_LENGTH,
+  renderSearchBox,
 };
