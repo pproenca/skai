@@ -13,8 +13,8 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-npm version "$VERSION" --no-git-tag-version
-git add package.json package-lock.json
+pnpm version "$VERSION" --no-git-tag-version
+git add package.json pnpm-lock.yaml
 git commit -m "chore: bump version to $VERSION"
 git tag "v$VERSION"
 

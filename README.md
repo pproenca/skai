@@ -6,6 +6,8 @@ The package manager for AI agent skills. Install agent skills from Git repositor
 
 ```bash
 npm install -g skai
+# or
+pnpm add -g skai
 ```
 
 Or run directly with npx:
