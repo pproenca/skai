@@ -156,7 +156,7 @@ function renderSearchBox(
   } else if (isActive) {
     content = `${S_SEARCH_ICON} ${cursor}`;
   } else {
-    content = color.dim(`${S_SEARCH_ICON} Search…`);
+    content = color.dim(`${S_SEARCH_ICON} Type to search…`);
   }
 
   // Calculate padding for the content (needs to fill the box)
@@ -165,7 +165,7 @@ function renderSearchBox(
     ? S_SEARCH_ICON.length + 1 + searchTerm.length + (isActive ? 1 : 0)
     : isActive
       ? S_SEARCH_ICON.length + 1 + 1 // icon + space + cursor
-      : S_SEARCH_ICON.length + 1 + "Search…".length;
+      : S_SEARCH_ICON.length + 1 + "Type to search…".length;
   const padding = Math.max(0, innerWidth - visibleLength);
 
   // Border color based on state
@@ -732,6 +732,23 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       // Disable tabs with no results (except "All" which is never disabled)
       tab.disabled = tab.id !== "all" && count === 0;
     }
+
+    // Clamp cursor position to stay within filtered items bounds
+    const filteredItems = this.getFilteredItems();
+    const tabState = this.tabNav.getActiveTabState();
+    const newCursor = Math.min(
+      tabState.cursor,
+      Math.max(0, filteredItems.length - 1)
+    );
+    // Reset scroll and clamp cursor when filter changes
+    let newScrollOffset = 0;
+    if (newCursor >= this.tabNav.maxVisibleItems) {
+      newScrollOffset = newCursor - this.tabNav.maxVisibleItems + 1;
+    }
+    this.tabNav.setActiveTabState({
+      cursor: newCursor,
+      scrollOffset: newScrollOffset
+    });
   }
 
   private renderPrompt(): string {
@@ -794,7 +811,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     // Navigation hints below separator
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("ctrl+r search • type to filter • ↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
     );
     // Spacing line for visual breathing room
     lines.push(`${color.cyan(S_BAR)}`);
