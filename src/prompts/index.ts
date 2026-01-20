@@ -17,6 +17,7 @@ export {
   buildSearchableOptions,
   filterOptions,
   highlightMatch,
+  highlightMatchDim,
   renderSearchBox,
   buildGroupedSearchableOptions,
   categorizeNodes,

@@ -115,6 +115,26 @@ export function highlightMatch(text: string, searchTerm: string): string {
 }
 
 /**
+ * Highlight matching text in cyan while keeping non-matching text dim.
+ * Used for non-active rows in search results.
+ */
+export function highlightMatchDim(text: string, searchTerm: string): string {
+  if (!searchTerm) return color.dim(text);
+
+  const lowerText = text.toLowerCase();
+  const lowerTerm = searchTerm.toLowerCase();
+  const index = lowerText.indexOf(lowerTerm);
+
+  if (index === -1) return color.dim(text);
+
+  const before = text.slice(0, index);
+  const match = text.slice(index, index + searchTerm.length);
+  const after = text.slice(index + searchTerm.length);
+
+  return `${color.dim(before)}${color.cyan(match)}${color.dim(after)}`;
+}
+
+/**
  * Render a search input box with rounded corners
  * Returns an array of lines for the search box
  */

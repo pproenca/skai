@@ -18,7 +18,7 @@ import {
   S_TOGGLE_ACTIVE_ENABLED,
   symbol,
 } from "./ui-constants.js";
-import { renderSearchBox, highlightMatch, MAX_SEARCH_LENGTH } from "./tree-select.js";
+import { renderSearchBox, highlightMatch, highlightMatchDim, MAX_SEARCH_LENGTH } from "./tree-select.js";
 
 interface SkillManagerState {
   skills: ManagedSkill[];
@@ -421,11 +421,6 @@ class SkillManagerPrompt extends Prompt {
       : skill.name;
     const paddedName = truncatedName.padEnd(LAYOUT.NAME_WIDTH);
 
-    // Apply highlighting to name on active row
-    const highlightedName = isActive && this.searchTerm
-      ? highlightMatch(paddedName, this.searchTerm)
-      : paddedName;
-
     // Truncate and pad agent
     const agent = skill.agent.displayName.length > LAYOUT.AGENT_WIDTH
       ? skill.agent.displayName.slice(0, LAYOUT.AGENT_WIDTH - 2) + ".."
@@ -435,8 +430,19 @@ class SkillManagerPrompt extends Prompt {
     const changedMarker = wasChanged ? color.yellow(" *") : "";
 
     if (isActive) {
+      // Active row: highlight match in name
+      const highlightedName = this.searchTerm
+        ? highlightMatch(paddedName, this.searchTerm)
+        : paddedName;
       return `${toggle} ${highlightedName}${agent}${scope}${changedMarker}`;
     }
+
+    // Non-active row: dim text, but keep search match highlighted
+    if (this.searchTerm) {
+      const highlightedName = highlightMatchDim(paddedName, this.searchTerm);
+      return `${toggle} ${highlightedName}${color.dim(agent)}${color.dim(scope)}${changedMarker}`;
+    }
+
     return `${toggle} ${color.dim(paddedName)}${color.dim(agent)}${color.dim(scope)}${changedMarker}`;
   }
 

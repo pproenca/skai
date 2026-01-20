@@ -17,6 +17,7 @@ export {
   getAllSkillIds,
   filterOptions,
   highlightMatch,
+  highlightMatchDim,
   buildSearchableOptions,
   SEARCH_THRESHOLD,
   MAX_SEARCH_LENGTH,
