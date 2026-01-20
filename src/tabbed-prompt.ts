@@ -112,6 +112,37 @@ export class TabNavigation {
   }
 
   /**
+   * Navigate content by a full page up/down within current tab
+   * Moves by maxVisibleItems instead of 1
+   */
+  navigateContentPage(
+    direction: "up" | "down",
+    itemCount: number
+  ): void {
+    if (itemCount === 0) return;
+
+    const state = this.getActiveTabState();
+    let newCursor = state.cursor;
+
+    if (direction === "up") {
+      newCursor = Math.max(0, state.cursor - this.maxVisibleItems);
+    } else {
+      newCursor = Math.min(itemCount - 1, state.cursor + this.maxVisibleItems);
+    }
+
+    // Calculate new scroll offset based on new cursor position
+    let newScrollOffset = state.scrollOffset;
+    if (newCursor < newScrollOffset) {
+      newScrollOffset = newCursor;
+    } else if (newCursor >= newScrollOffset + this.maxVisibleItems) {
+      newScrollOffset = newCursor - this.maxVisibleItems + 1;
+    }
+
+    // Batch cursor and scroll updates into single state change
+    this.setActiveTabState({ cursor: newCursor, scrollOffset: newScrollOffset });
+  }
+
+  /**
    * Adjust scroll offset to keep cursor visible
    * Note: Prefer using navigateContent() which batches updates
    */

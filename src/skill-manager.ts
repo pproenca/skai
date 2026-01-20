@@ -58,6 +58,16 @@ class SkillManagerPrompt extends Prompt {
 
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+
+    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // The "key" event from @clack/core only passes the first character
+    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+      if (key?.sequence === "\x1b[5~") {
+        this.tabNav.navigateContentPage("up", this.getFilteredSkills().length);
+      } else if (key?.sequence === "\x1b[6~") {
+        this.tabNav.navigateContentPage("down", this.getFilteredSkills().length);
+      }
+    });
   }
 
   private handleKey(key: string): void {

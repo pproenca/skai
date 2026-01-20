@@ -221,6 +221,16 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
 
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+
+    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // The "key" event from @clack/core only passes the first character
+    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+      if (key?.sequence === "\x1b[5~") {
+        this.setCursorWithScrollPage("up");
+      } else if (key?.sequence === "\x1b[6~") {
+        this.setCursorWithScrollPage("down");
+      }
+    });
   }
 
   private handleKey(key: string): void {
@@ -281,6 +291,22 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     } else if (this.listCursor >= this.scrollOffset + this.maxItems) {
       this.scrollOffset = this.listCursor - this.maxItems + 1;
     }
+  }
+
+  /**
+   * Set cursor with page navigation (moves by maxItems instead of 1)
+   */
+  private setCursorWithScrollPage(direction: "up" | "down"): void {
+    const itemCount = this.filteredOptions.length;
+    if (itemCount === 0) return;
+
+    let newCursor = this.listCursor;
+    if (direction === "up") {
+      newCursor = Math.max(0, this.listCursor - this.maxItems);
+    } else {
+      newCursor = Math.min(itemCount - 1, this.listCursor + this.maxItems);
+    }
+    this.setCursorWithScroll(newCursor);
   }
 
   private updateFilter(): void {
@@ -518,6 +544,16 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+
+    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // The "key" event from @clack/core only passes the first character
+    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+      if (key?.sequence === "\x1b[5~") {
+        this.tabNav.navigateContentPage("up", this.getFilteredItems().length);
+      } else if (key?.sequence === "\x1b[6~") {
+        this.tabNav.navigateContentPage("down", this.getFilteredItems().length);
+      }
+    });
   }
 
   private handleKey(key: string): void {
@@ -723,9 +759,11 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       selectedCount > 0 ? color.green(` • ${selectedCount} selected`) : "";
 
     // Render search box with bordered design
+    // Pass false for isActive to always show dim borders (no blinking cursor)
+    // Users can still type to filter - only the visual state changes
     const searchBoxLines = renderSearchBox(
       this.searchTerm,
-      this.state === "active",
+      false,
       LAYOUT.TAB_BAR_WIDTH
     );
     for (const line of searchBoxLines) {
@@ -868,6 +906,16 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
 
     this.on("key", (key) => this.handleKey(key ?? ""));
     this.on("cursor", (action) => this.handleCursor(action ?? "up"));
+
+    // Raw keypress listener for Page Up/Down (full escape sequences)
+    // The "key" event from @clack/core only passes the first character
+    this.input.on("keypress", (_ch: string, key: { sequence?: string }) => {
+      if (key?.sequence === "\x1b[5~") {
+        this.setCursorWithScrollPage("up");
+      } else if (key?.sequence === "\x1b[6~") {
+        this.setCursorWithScrollPage("down");
+      }
+    });
   }
 
   private rebuildFlatItems(): void {
@@ -955,6 +1003,22 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
     } else if (this.listCursor >= this.scrollOffset + this.maxItems) {
       this.scrollOffset = this.listCursor - this.maxItems + 1;
     }
+  }
+
+  /**
+   * Set cursor with page navigation (moves by maxItems instead of 1)
+   */
+  private setCursorWithScrollPage(direction: "up" | "down"): void {
+    const itemCount = this.flatItems.length;
+    if (itemCount === 0) return;
+
+    let newCursor = this.listCursor;
+    if (direction === "up") {
+      newCursor = Math.max(0, this.listCursor - this.maxItems);
+    } else {
+      newCursor = Math.min(itemCount - 1, this.listCursor + this.maxItems);
+    }
+    this.setCursorWithScroll(newCursor);
   }
 
   private updateFilter(): void {
