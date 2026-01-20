@@ -153,15 +153,19 @@ function renderSearchBox(
   let content: string;
   if (searchTerm) {
     content = `${S_SEARCH_ICON} ${searchTerm}${cursor}`;
+  } else if (isActive) {
+    content = `${S_SEARCH_ICON} ${cursor}`;
   } else {
-    content = color.dim(`${S_SEARCH_ICON} Search…`) + cursor;
+    content = color.dim(`${S_SEARCH_ICON} Search…`);
   }
 
   // Calculate padding for the content (needs to fill the box)
   // Note: We need to handle ANSI codes which add length but no visible width
   const visibleLength = searchTerm
     ? S_SEARCH_ICON.length + 1 + searchTerm.length + (isActive ? 1 : 0)
-    : S_SEARCH_ICON.length + 1 + "Search…".length + (isActive ? 1 : 0);
+    : isActive
+      ? S_SEARCH_ICON.length + 1 + 1 // icon + space + cursor
+      : S_SEARCH_ICON.length + 1 + "Search…".length;
   const padding = Math.max(0, innerWidth - visibleLength);
 
   // Border color based on state
@@ -397,6 +401,7 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       }
 
       if (belowCount > 0) {
+        lines.push(`${color.cyan(S_BAR)}`);
         lines.push(
           `${color.cyan(S_BAR)}  ${color.dim(`↓ ${belowCount} more below`)}`
         );
@@ -764,6 +769,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       }
 
       if (belowCount > 0) {
+        lines.push(`${color.cyan(S_BAR)}`);
         lines.push(
           `${color.cyan(S_BAR)}  ${color.dim(`↓ ${belowCount} more below`)}`
         );
@@ -1094,6 +1100,7 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       }
 
       if (belowCount > 0) {
+        lines.push(`${color.cyan(S_BAR)}`);
         lines.push(
           `${color.cyan(S_BAR)}  ${color.dim(`↓ ${belowCount} more below`)}`
         );
