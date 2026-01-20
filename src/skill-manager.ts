@@ -123,7 +123,15 @@ class SkillManagerPrompt extends Prompt {
       ? this.state_data.changes.get(key)!
       : skill.enabled;
 
-    this.state_data.changes.set(key, !currentState);
+    const newState = !currentState;
+
+    // If new state matches original, remove from changes (no net change)
+    // Otherwise, track the change
+    if (newState === skill.enabled) {
+      this.state_data.changes.delete(key);
+    } else {
+      this.state_data.changes.set(key, newState);
+    }
   }
 
   private getEffectiveState(skill: ManagedSkill): boolean {
