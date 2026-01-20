@@ -157,7 +157,7 @@ function renderSearchBox(
   } else if (isActive) {
     content = `${S_SEARCH_ICON} ${cursor}`;
   } else {
-    content = color.dim(`${S_SEARCH_ICON} Type to search…`);
+    content = color.dim(`${S_SEARCH_ICON} Filter...`);
   }
 
   // Calculate padding for the content (needs to fill the box)
@@ -166,7 +166,7 @@ function renderSearchBox(
     ? S_SEARCH_ICON.length + 1 + searchTerm.length + (isActive ? 1 : 0)
     : isActive
       ? S_SEARCH_ICON.length + 1 + 1 // icon + space + cursor
-      : S_SEARCH_ICON.length + 1 + "Type to search…".length;
+      : S_SEARCH_ICON.length + 1 + "Filter...".length;
   const padding = Math.max(0, innerWidth - visibleLength);
 
   // Border color based on state
@@ -395,8 +395,9 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
       `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
     );
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑↓ nav • PgUp/Dn • space • ^R clear • Esc • enter")}`
     );
+    lines.push(`${color.cyan(S_BAR)}`); // Bottom padding for navigation hints
     lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
     if (this.filteredOptions.length === 0) {
@@ -834,10 +835,9 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
     // Navigation hints below separator
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • ←/→/tab switch • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑↓ nav • PgUp/Dn • ←→ tabs • space • ^R clear • Esc • enter")}`
     );
-    // Spacing line for visual breathing room
-    lines.push(`${color.cyan(S_BAR)}`);
+    lines.push(`${color.cyan(S_BAR)}`); // Bottom padding for navigation hints
 
     if (filteredItems.length === 0) {
       lines.push(
@@ -1193,8 +1193,9 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
       `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
     );
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • space select • Ctrl+R clear • Esc cancel • enter confirm")}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑↓ nav • PgUp/Dn • space • ^R clear • Esc • enter")}`
     );
+    lines.push(`${color.cyan(S_BAR)}`); // Bottom padding for navigation hints
     lines.push(`${color.cyan(S_BAR)}  ${createSeparator()}`);
 
     if (this.flatItems.length === 0) {

@@ -210,10 +210,9 @@ class SkillManagerPrompt extends Prompt {
       : "";
 
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • PgUp/Dn page • ←/→/tab switch • space toggle • Esc cancel • enter apply")}${changeText}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑↓ nav • PgUp/Dn • ←→ tabs • space • Esc • enter")}${changeText}`
     );
-    // Spacing line for visual breathing room
-    lines.push(`${color.cyan(S_BAR)}`);
+    lines.push(`${color.cyan(S_BAR)}`); // Bottom padding for navigation hints
 
     // Header row - removed STATUS column
     const headerName = "SKILL".padEnd(LAYOUT.NAME_WIDTH);
