@@ -4,13 +4,11 @@ import type { Tab } from "./types.js";
 const DEFAULT_WIDTH = 60;
 const OVERFLOW_LEFT = "‹ ";
 const OVERFLOW_RIGHT = " ›";
-const HINT_TEXT = "(←/→ or tab to switch)";
 
 export interface TabBarOptions {
   tabs: Tab[];
   activeIndex: number;
   width?: number;
-  showHint?: boolean;
 }
 
 interface VisibleTabsResult {
@@ -109,15 +107,15 @@ function calculateVisibleTabs(
  * Supports horizontal overflow with ‹ and › indicators
  *
  * Example output (no overflow):
- *  All  Coding   DevOps   Testing  (←/→ or tab to switch)
+ *  All    API    CLI    DevEx    Frontend    Infra
  * ──────────────────────────────────────────────────────────
  *
  * Example output (with overflow):
- * ‹ CLI  DevEx  Frontend  Infra ›  (←/→ or tab to switch)
+ * ‹ CLI    DevEx    Frontend    Infra ›
  * ──────────────────────────────────────────────────────────
  */
 export function renderTabBar(options: TabBarOptions): string[] {
-  const { tabs, activeIndex, width = DEFAULT_WIDTH, showHint = true } = options;
+  const { tabs, activeIndex, width = DEFAULT_WIDTH } = options;
 
   if (tabs.length === 0) {
     return [];
@@ -125,10 +123,8 @@ export function renderTabBar(options: TabBarOptions): string[] {
 
   const lines: string[] = [];
 
-  // Calculate hint width to determine available space for tabs
-  const hint = showHint ? `  ${HINT_TEXT}` : "";
-  const hintWidth = showHint ? hint.length : 0;
-  const availableWidth = width - hintWidth;
+  // Full width available for tabs (no hint on tab line)
+  const availableWidth = width;
 
   // Calculate which tabs are visible
   const { startIndex, endIndex, hasMore } = calculateVisibleTabs(
@@ -164,8 +160,7 @@ export function renderTabBar(options: TabBarOptions): string[] {
     tabLine = tabLine + color.dim(OVERFLOW_RIGHT);
   }
 
-  const hintStr = showHint ? color.dim(hint) : "";
-  lines.push(`${tabLine}${hintStr}`);
+  lines.push(tabLine);
 
   // Separator line
   lines.push(color.dim("─".repeat(width)));

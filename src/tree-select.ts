@@ -338,8 +338,11 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
 
         const hint = opt.option.hint || "";
 
-        // Pad label to align summaries in a clean column
-        const paddedLabel = opt.option.label.padEnd(MAX_LABEL_WIDTH);
+        // Truncate and pad label to align summaries in a clean column
+        const truncatedLabel = opt.option.label.length > MAX_LABEL_WIDTH
+          ? opt.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+          : opt.option.label;
+        const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
         const highlightedPaddedLabel = this.searchTerm
           ? highlightMatch(paddedLabel, this.searchTerm)
           : paddedLabel;
@@ -583,15 +586,17 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     lines.push(
       `${color.cyan(S_BAR)}  Search: ${this.searchTerm}${cursor}  ${color.dim(countText)}${selectedText}`
     );
-    lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space select • enter confirm")}`
-    );
 
     // Render tab bar (includes its own separator line)
     const tabBarLines = this.tabNav.renderTabBar();
     for (const line of tabBarLines) {
       lines.push(`${color.cyan(S_BAR)}  ${line}`);
     }
+
+    // Navigation hints below separator
+    lines.push(
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space select • enter confirm")}`
+    );
 
     if (filteredItems.length === 0) {
       lines.push(
@@ -635,8 +640,11 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
         const hint = item.option.hint || "";
 
-        // Pad label to align summaries in a clean column
-        const paddedLabel = item.option.label.padEnd(MAX_LABEL_WIDTH);
+        // Truncate and pad label to align summaries in a clean column
+        const truncatedLabel = item.option.label.length > MAX_LABEL_WIDTH
+          ? item.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+          : item.option.label;
+        const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
         const highlightedPaddedLabel = this.searchTerm
           ? highlightMatch(paddedLabel, this.searchTerm)
           : paddedLabel;
@@ -961,8 +969,11 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
             ? `${color.gray("└")} `
             : `${color.gray("│")} `;
 
-          // Pad label to align summaries in a clean column
-          const paddedLabel = item.option.option.label.padEnd(MAX_LABEL_WIDTH);
+          // Truncate and pad label to align summaries in a clean column
+          const truncatedLabel = item.option.option.label.length > MAX_LABEL_WIDTH
+            ? item.option.option.label.slice(0, MAX_LABEL_WIDTH - 1) + "…"
+            : item.option.option.label;
+          const paddedLabel = truncatedLabel.padEnd(MAX_LABEL_WIDTH);
           const highlightedPaddedLabel = this.searchTerm
             ? highlightMatch(paddedLabel, this.searchTerm)
             : paddedLabel;

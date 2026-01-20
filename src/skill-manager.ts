@@ -204,21 +204,21 @@ class SkillManagerPrompt extends Prompt {
       return lines.join("\n");
     }
 
-    // Render tab bar
+    // Render tab bar (includes separator line)
     const tabBarLines = this.tabNav.renderTabBar();
     for (const line of tabBarLines) {
       lines.push(`${color.cyan(S_BAR)}  ${line}`);
     }
 
+    // Navigation hints below separator
     const changeCount = changes.size;
     const changeText = changeCount > 0
       ? color.yellow(` • ${changeCount} pending change(s)`)
       : "";
 
     lines.push(
-      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • space toggle • enter apply")}${changeText}`
+      `${color.cyan(S_BAR)}  ${color.dim("↑/↓ navigate • ←/→/tab switch • space toggle • enter apply")}${changeText}`
     );
-    lines.push(`${color.cyan(S_BAR)}  ${color.dim("─".repeat(50))}`);
 
     // Header row - removed STATUS column
     const headerName = "SKILL".padEnd(MAX_NAME_WIDTH);
