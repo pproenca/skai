@@ -77,6 +77,7 @@ function getVersion(): string {
     const pkg: PackageJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
     return pkg.version ?? '0.0.1';
   } catch {
+    // Fall back to default version if package.json is unreadable
     return '0.0.1';
   }
 }
@@ -138,8 +139,12 @@ function formatInstallStatus(statuses: SkillInstallStatus[], isDryRun: boolean):
   const grouped = new Map<string, SkillInstallStatus[]>();
   for (const status of statuses) {
     const key = status.agentName;
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(status);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.push(status);
+    } else {
+      grouped.set(key, [status]);
+    }
   }
 
   for (const [agent, skills] of grouped) {
@@ -376,6 +381,7 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
           return;
         }
       } catch {
+        // treeSelect throws when user cancels with Ctrl+C or Escape
         clack.outro(chalk.yellow('Cancelled'));
         return;
       }
@@ -730,6 +736,10 @@ async function runInstall(source: string | undefined, options: InstallOptions): 
     clack.outro(chalk.red('Installation failed'));
     process.exit(EXIT_ERROR);
   } finally {
+    // Clean up signal handlers to prevent memory leaks
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+
     if (tempDir) {
       try {
         cleanupTempDir(tempDir);

@@ -110,9 +110,7 @@ class SkillManagerPrompt extends Prompt {
     if (!skill) return;
 
     const key = getSkillKey(skill);
-    const currentState = this.state_data.changes.has(key)
-      ? this.state_data.changes.get(key)!
-      : skill.enabled;
+    const currentState = this.state_data.changes.get(key) ?? skill.enabled;
 
     const newState = !currentState;
 
@@ -127,9 +125,7 @@ class SkillManagerPrompt extends Prompt {
 
   private getEffectiveState(skill: ManagedSkill): boolean {
     const key = getSkillKey(skill);
-    return this.state_data.changes.has(key)
-      ? this.state_data.changes.get(key)!
-      : skill.enabled;
+    return this.state_data.changes.get(key) ?? skill.enabled;
   }
 
   private getToggleSymbol(
@@ -321,9 +317,8 @@ export async function manageSkills(): Promise<ManageResult | null> {
 
   for (const skill of skills) {
     const key = getSkillKey(skill);
-    if (!changes.has(key)) continue;
-
-    const newState = changes.get(key)!;
+    const newState = changes.get(key);
+    if (newState === undefined) continue;
     if (newState === skill.enabled) continue; // No actual change needed
 
     const toggleResult: ToggleResult = toggleSkill(skill);

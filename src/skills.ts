@@ -108,6 +108,7 @@ export function parseSkillMd(filePath: string, searchRoot?: string): Skill | nul
       category: category && category.length > 0 ? category : undefined,
     };
   } catch {
+    // File read or parse errors return null to skip invalid skill files
     return null;
   }
 }
@@ -125,6 +126,7 @@ function searchDirectory(
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
+    // Skip directories we can't read (permissions, deleted, etc.)
     return;
   }
 
@@ -214,10 +216,12 @@ export function buildSkillTree(skills: Skill[]): SkillTreeNode {
 
     // Navigate/create category nodes
     for (const cat of skill.category || []) {
-      if (!current.children.has(cat)) {
-        current.children.set(cat, { name: cat, children: new Map() });
+      let child = current.children.get(cat);
+      if (!child) {
+        child = { name: cat, children: new Map() };
+        current.children.set(cat, child);
       }
-      current = current.children.get(cat)!;
+      current = child;
     }
 
     // Add skill as leaf
@@ -268,7 +272,7 @@ export function skillTreeToTreeNodes(node: SkillTreeNode, parentPath = ""): Tree
     result.push({
       id,
       label: s.name,
-      hint: extractShortSummary(s.skill!.description),
+      hint: s.skill ? extractShortSummary(s.skill.description) : "",
       skill: s.skill,
       selected: false,
     });

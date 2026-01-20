@@ -56,6 +56,7 @@ export function extractDependencies(skillPath: string): SkillDependencies | null
       dependencies,
     };
   } catch {
+    // Skip skills with invalid or unreadable package.json files
     return null;
   }
 }
@@ -161,8 +162,11 @@ export function getPackageManagerInstallUrl(pm: PackageManager): string {
   return PM_INSTALL_URLS[pm];
 }
 
+const PM_CHECK_TIMEOUT_MS = 5000; // 5 second timeout for checking package manager availability
+const PM_INSTALL_TIMEOUT_MS = 300000; // 5 minute timeout for installing dependencies
+
 export async function isPackageManagerAvailable(pm: PackageManager): Promise<boolean> {
-  return new Promise((resolve) => {
+  const checkPromise = new Promise<boolean>((resolve) => {
     const child = spawn(pm, ["--version"], {
       stdio: "ignore",
       shell: process.platform === "win32",
@@ -171,6 +175,13 @@ export async function isPackageManagerAvailable(pm: PackageManager): Promise<boo
     child.on("error", () => resolve(false));
     child.on("close", (code) => resolve(code === 0));
   });
+
+  // Add timeout to prevent hanging if package manager is unresponsive
+  const timeoutPromise = new Promise<boolean>((resolve) => {
+    setTimeout(() => resolve(false), PM_CHECK_TIMEOUT_MS);
+  });
+
+  return Promise.race([checkPromise, timeoutPromise]);
 }
 
 export async function installDependencies(
@@ -213,12 +224,30 @@ export async function installDependencies(
     });
 
     let stderr = "";
+    let resolved = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    child.stderr?.on("data", (data) => {
+    const stderrHandler = (data: Buffer) => {
       stderr += data.toString();
-    });
+    };
+
+    child.stderr?.on("data", stderrHandler);
+
+    const cleanup = () => {
+      // Remove stderr listener to prevent memory leaks
+      child.stderr?.off("data", stderrHandler);
+      signal?.removeEventListener("abort", abortHandler);
+      // Clear timeout if set
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
 
     const abortHandler = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
       child.kill("SIGTERM");
       resolve({
         installed: false,
@@ -227,10 +256,27 @@ export async function installDependencies(
       });
     };
 
+    const timeoutHandler = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      child.kill("SIGTERM");
+      resolve({
+        installed: false,
+        packageManager: pm,
+        error: "Installation timed out after 5 minutes",
+      });
+    };
+
     signal?.addEventListener("abort", abortHandler, { once: true });
 
+    // Set timeout to prevent hanging indefinitely
+    timeoutId = setTimeout(timeoutHandler, PM_INSTALL_TIMEOUT_MS);
+
     child.on("error", (err) => {
-      signal?.removeEventListener("abort", abortHandler);
+      if (resolved) return;
+      resolved = true;
+      cleanup();
       resolve({
         installed: false,
         packageManager: pm,
@@ -239,7 +285,9 @@ export async function installDependencies(
     });
 
     child.on("close", (code) => {
-      signal?.removeEventListener("abort", abortHandler);
+      if (resolved) return;
+      resolved = true;
+      cleanup();
       if (code === 0) {
         resolve({
           installed: true,

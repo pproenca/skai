@@ -82,6 +82,7 @@ export class TabNavigation {
 
   /**
    * Navigate content up/down within current tab
+   * Batches cursor and scroll updates into a single state change
    */
   navigateContent(
     direction: "up" | "down",
@@ -98,24 +99,36 @@ export class TabNavigation {
       newCursor = Math.min(itemCount - 1, state.cursor + 1);
     }
 
-    this.setActiveTabState({ cursor: newCursor });
-    this.adjustScroll();
+    // Calculate new scroll offset based on new cursor position
+    let newScrollOffset = state.scrollOffset;
+    if (newCursor < newScrollOffset) {
+      newScrollOffset = newCursor;
+    } else if (newCursor >= newScrollOffset + this.maxVisibleItems) {
+      newScrollOffset = newCursor - this.maxVisibleItems + 1;
+    }
+
+    // Batch cursor and scroll updates into single state change
+    this.setActiveTabState({ cursor: newCursor, scrollOffset: newScrollOffset });
   }
 
   /**
    * Adjust scroll offset to keep cursor visible
+   * Note: Prefer using navigateContent() which batches updates
    */
   adjustScroll(): void {
     const state = this.getActiveTabState();
-    let { scrollOffset, cursor } = state;
+    const { scrollOffset, cursor } = state;
 
+    let newScrollOffset = scrollOffset;
     if (cursor < scrollOffset) {
-      scrollOffset = cursor;
+      newScrollOffset = cursor;
     } else if (cursor >= scrollOffset + this.maxVisibleItems) {
-      scrollOffset = cursor - this.maxVisibleItems + 1;
+      newScrollOffset = cursor - this.maxVisibleItems + 1;
     }
 
-    this.setActiveTabState({ scrollOffset });
+    if (newScrollOffset !== scrollOffset) {
+      this.setActiveTabState({ scrollOffset: newScrollOffset });
+    }
   }
 
   /**

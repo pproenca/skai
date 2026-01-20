@@ -245,17 +245,19 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     action: "up" | "down" | "left" | "right" | "space" | "enter" | "cancel"
   ): void {
     switch (action) {
-      case "up":
-        this.listCursor = Math.max(0, this.listCursor - 1);
-        this.adjustScroll();
+      case "up": {
+        const newCursor = Math.max(0, this.listCursor - 1);
+        this.setCursorWithScroll(newCursor);
         break;
-      case "down":
-        this.listCursor = Math.min(
+      }
+      case "down": {
+        const newCursor = Math.min(
           this.filteredOptions.length - 1,
           this.listCursor + 1
         );
-        this.adjustScroll();
+        this.setCursorWithScroll(newCursor);
         break;
+      }
       case "space":
         this.toggleSelection();
         break;
@@ -268,7 +270,12 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
     }
   }
 
-  private adjustScroll(): void {
+  /**
+   * Set cursor and adjust scroll in a single operation
+   */
+  private setCursorWithScroll(newCursor: number): void {
+    this.listCursor = newCursor;
+    // Calculate scroll offset based on new cursor position
     if (this.listCursor < this.scrollOffset) {
       this.scrollOffset = this.listCursor;
     } else if (this.listCursor >= this.scrollOffset + this.maxItems) {
@@ -278,12 +285,17 @@ class SearchableMultiSelectPrompt<T> extends Prompt {
 
   private updateFilter(): void {
     this.filteredOptions = filterOptions(this.allOptions, this.searchTerm);
-    this.listCursor = Math.min(
+    const newCursor = Math.min(
       this.listCursor,
       Math.max(0, this.filteredOptions.length - 1)
     );
+    // Reset scroll and set cursor in single update
     this.scrollOffset = 0;
-    this.adjustScroll();
+    this.listCursor = newCursor;
+    // Adjust scroll if cursor is beyond visible area
+    if (this.listCursor >= this.maxItems) {
+      this.scrollOffset = this.listCursor - this.maxItems + 1;
+    }
   }
 
   private toggleSelection(): void {
@@ -474,6 +486,13 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
   private readonly promptMessage: string;
   private tabNav: TabNavigation;
 
+  // Memoization cache for filtered items
+  private filteredItemsCache: SearchableGroupOption<T>[] | null = null;
+  private filteredItemsCacheKey = "";
+  // Memoization cache for match counts
+  private matchCountCache: Map<string, number> | null = null;
+  private matchCountCacheKey = "";
+
   constructor(opts: TabbedGroupMultiSelectOptions<T>) {
     super(
       {
@@ -514,11 +533,13 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     if (key === "\x7f" || key === "\b") {
       if (this.searchTerm.length > 0) {
         this.searchTerm = this.searchTerm.slice(0, -1);
+        this.updateTabsForSearch();
       }
       return;
     }
     if (key.length === 1 && /[a-z0-9\-_./]/i.test(key)) {
       this.searchTerm += key;
+      this.updateTabsForSearch();
     }
   }
 
@@ -544,6 +565,7 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
       case "cancel":
         if (this.searchTerm) {
           this.searchTerm = "";
+          this.updateTabsForSearch();
         }
         break;
     }
@@ -551,6 +573,13 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
   private getFilteredItems(): SearchableGroupOption<T>[] {
     const activeTab = this.tabNav.getActiveTab();
+    const cacheKey = `${this.searchTerm}:${activeTab.id}`;
+
+    // Return cached result if dependencies haven't changed
+    if (this.filteredItemsCache !== null && this.filteredItemsCacheKey === cacheKey) {
+      return this.filteredItemsCache;
+    }
+
     const term = this.searchTerm.toLowerCase();
 
     // Get items based on active tab
@@ -568,6 +597,10 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     if (term) {
       items = items.filter((opt) => opt.searchableText.includes(term));
     }
+
+    // Cache the result
+    this.filteredItemsCache = items;
+    this.filteredItemsCacheKey = cacheKey;
 
     return items;
   }
@@ -591,9 +624,14 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
   /**
    * Get match counts for each tab based on current search term
-   * Returns a map of tab ID to match count
+   * Returns a map of tab ID to match count (memoized)
    */
   private getMatchCountByTab(): Map<string, number> {
+    // Return cached result if search term hasn't changed
+    if (this.matchCountCache !== null && this.matchCountCacheKey === this.searchTerm) {
+      return this.matchCountCache;
+    }
+
     const counts = new Map<string, number>();
     const term = this.searchTerm.toLowerCase();
 
@@ -617,6 +655,11 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
     }
 
     counts.set("all", allCount);
+
+    // Cache the result
+    this.matchCountCache = counts;
+    this.matchCountCacheKey = this.searchTerm;
+
     return counts;
   }
 
@@ -646,9 +689,6 @@ class TabbedGroupMultiSelectPrompt<T> extends Prompt {
 
   private renderPrompt(): string {
     const lines: string[] = [];
-
-    // Update tab badges and disabled state based on search
-    this.updateTabsForSearch();
 
     const filteredItems = this.getFilteredItems();
 
@@ -879,17 +919,19 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
     action: "up" | "down" | "left" | "right" | "space" | "enter" | "cancel"
   ): void {
     switch (action) {
-      case "up":
-        this.listCursor = Math.max(0, this.listCursor - 1);
-        this.adjustScroll();
+      case "up": {
+        const newCursor = Math.max(0, this.listCursor - 1);
+        this.setCursorWithScroll(newCursor);
         break;
-      case "down":
-        this.listCursor = Math.min(
+      }
+      case "down": {
+        const newCursor = Math.min(
           this.flatItems.length - 1,
           this.listCursor + 1
         );
-        this.adjustScroll();
+        this.setCursorWithScroll(newCursor);
         break;
+      }
       case "space":
         this.toggleSelection();
         break;
@@ -902,7 +944,12 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
     }
   }
 
-  private adjustScroll(): void {
+  /**
+   * Set cursor and adjust scroll in a single operation
+   */
+  private setCursorWithScroll(newCursor: number): void {
+    this.listCursor = newCursor;
+    // Calculate scroll offset based on new cursor position
     if (this.listCursor < this.scrollOffset) {
       this.scrollOffset = this.listCursor;
     } else if (this.listCursor >= this.scrollOffset + this.maxItems) {
@@ -912,12 +959,17 @@ class SearchableGroupMultiSelectPrompt<T> extends Prompt {
 
   private updateFilter(): void {
     this.rebuildFlatItems();
-    this.listCursor = Math.min(
+    const newCursor = Math.min(
       this.listCursor,
       Math.max(0, this.flatItems.length - 1)
     );
+    // Reset scroll and set cursor in single update
     this.scrollOffset = 0;
-    this.adjustScroll();
+    this.listCursor = newCursor;
+    // Adjust scroll if cursor is beyond visible area
+    if (this.listCursor >= this.maxItems) {
+      this.scrollOffset = this.listCursor - this.maxItems + 1;
+    }
   }
 
   private getGroupOptions(groupName: string): SearchableGroupOption<T>[] {
